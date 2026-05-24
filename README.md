@@ -1,8 +1,21 @@
 # Fusion Decoupled Knowledge Distillation (FDKD)
-# Interactive Research Visualization System
+## Knowledge Transfer via Decoupling Teaching Assistant
 
-> **Tran et al.** — *Knowledge Transfer via Decoupling Teaching Assistant*
-> Course: CS338 | Tiny ImageNet (200 classes, 64×64)
+**Quang-Minh Tran<sup>a,b</sup>, Viet-Hoang Nguyen<sup>a,b</sup>**
+
+<sup>a</sup> University of Information Technology, VNU-HCM &nbsp;|&nbsp; <sup>b</sup> Course CS338
+
+---
+
+## 📄 Abstract
+
+Knowledge distillation is a standard approach for model compression, but its effectiveness degrades under large teacher–student capacity gaps, resulting in optimization instability or collapse and poor feature alignment. While **Decoupled Knowledge Distillation (DKD)** improves supervision by separating target and non-target components, it does not address capacity mismatch. **Teacher Assistant Knowledge Distillation (TAKD)** alleviates this gap via intermediate models but relies on conventional objectives that entangle signals and propagate noisy logit distributions, limiting training stability under heterogeneous settings.
+
+To address this, we propose **Fusion Decoupled Knowledge Distillation (FDKD)**, a unified framework that integrates TAKD with stage-wise decoupled supervision to enable progressive knowledge transfer. Unlike traditional multi-stage methods that rely on conventional KD objectives and propagate noisy logit distributions, FDKD exploits a decoupled objective across the teacher–assistant–student hierarchy, preserving both global category relationships and local sample-specific information as model capacity scales down.
+
+Extensive experiments on standard benchmarks demonstrate that the proposed FDKD achieves superior performance under large capacity gaps, **outperforming vanilla TAKD and standalone DKD by 7.53% and 12.58% in top-1 accuracy**, respectively.
+
+📎 **Training Pipeline:** [`FDKD_TrainingPipeline.pdf`](docs/FDKD_TrainingPipeline.pdf)
 
 ---
 
