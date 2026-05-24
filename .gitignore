@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual env
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Checkpoints (large files)
+checkpoints/
+work_dirs/
+*.pth
+*.pt
+*.ckpt
+
+# Node
+node_modules/
+.next/
+frontend/.next/
+frontend/node_modules/
+
+# Misc
+*.log
+.env

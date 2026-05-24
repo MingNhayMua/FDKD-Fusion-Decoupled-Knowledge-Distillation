@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #0a0b1a;
+  --bg-secondary: #111228;
+  --bg-card: rgba(17, 18, 40, 0.7);
+  --bg-glass: rgba(255, 255, 255, 0.03);
+  --border-glass: rgba(255, 255, 255, 0.08);
+
+  --teacher-color: #6366f1;
+  --teacher-glow: rgba(99, 102, 241, 0.3);
+  --assistant-color: #8b5cf6;
+  --assistant-glow: rgba(139, 92, 246, 0.3);
+  --student-color: #10b981;
+  --student-glow: rgba(16, 185, 129, 0.3);
+
+  --accent-cyan: #06b6d4;
+  --accent-pink: #ec4899;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+.font-mono { font-family: 'JetBrains Mono', monospace; }
+
+/* Glass card */
+.glass-card {
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-glass);
+  border-radius: 16px;
+}
+
+.glass-card-hover {
+  transition: all 0.3s ease;
+}
+.glass-card-hover:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  transform: translateY(-2px);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, var(--teacher-color), var(--assistant-color), var(--student-color));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glow effects */
+.glow-teacher { box-shadow: 0 0 20px var(--teacher-glow); }
+.glow-assistant { box-shadow: 0 0 20px var(--assistant-glow); }
+.glow-student { box-shadow: 0 0 20px var(--student-glow); }
+
+/* Section styling */
+.section-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 4rem 1.5rem;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 3px;
+}
+
+/* Animated gradient border */
+@keyframes borderGlow {
+  0%, 100% { border-color: var(--teacher-color); }
+  33% { border-color: var(--assistant-color); }
+  66% { border-color: var(--student-color); }
+}
+
+.animate-border-glow {
+  animation: borderGlow 4s ease-in-out infinite;
+}
+
+/* Pulse animation */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Flowing particles */
+@keyframes flowRight {
+  0% { transform: translateX(-100%); opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateX(200%); opacity: 0; }
+}
+
+.animate-flow {
+  animation: flowRight 2s ease-in-out infinite;
+}
