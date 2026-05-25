@@ -200,7 +200,7 @@ def _map_swin_keys(state_dict: dict) -> dict:
         *.ffn.layers.1.*                    *.mlp.fc2.*
         *.downsample.projection.*           *.downsample.reduction.*
         backbone.norm3.*                    norm.*
-        head.fc.*                           head.*  (timm uses head.weight, not head.fc.weight!)
+        head.fc.*                           head.fc.*  (same for timm)
 
     NOTE: MMPretrain places downsample at the END of stage X, while
     timm places it at the START of layer X+1. So the downsample index
@@ -245,9 +245,7 @@ def _map_swin_keys(state_dict: dict) -> dict:
         if new_key.startswith("norm3."):
             new_key = new_key.replace("norm3.", "norm.")
 
-        # 9. head.fc.* → head.* (timm uses head.weight, NOT head.fc.weight)
-        if new_key.startswith("head.fc."):
-            new_key = new_key.replace("head.fc.", "head.")
+        # 9. head.fc stays as head.fc (timm uses ClassifierHead.fc)
 
         mapped[new_key] = v
 
