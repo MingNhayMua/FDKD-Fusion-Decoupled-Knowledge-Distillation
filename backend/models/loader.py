@@ -1,9 +1,13 @@
 """
 Model loading utilities for FDKD pipeline.
+
+IMPORTANT: Models MUST be created with MMPretrain's architecture
+(ImageClassifier with ResNet/SwinTransformer backbone + GlobalAveragePooling
+neck + LinearClsHead) because the checkpoints were trained with MMPretrain.
+Using torchvision or timm models results in key mismatches and broken inference.
 """
 import os
 import torch
-from torchvision import models
 
 from utils.config import (
     DEVICE, NUM_CLASSES, CHECKPOINT_DIR,
@@ -63,56 +67,27 @@ def find_best_checkpoint(directory: str) -> str | None:
     return pth_files[0]
 
 
-def _extract_role_keys(state_dict: dict, role: str = "") -> dict:
-    """Extract keys for a specific role from a distillation checkpoint.
+def _extract_state_dict(checkpoint_path: str, role: str = "") -> dict | None:
+    """Load and extract state_dict from a checkpoint file.
 
-    MMPretrain distillation checkpoints use prefixes like:
-      student.backbone.layer1... / student.head.fc...
-      teacher.backbone.layer1... / teacher.head.fc...
+    For distillation checkpoints (MMRazor), keys have the form:
+        architecture.backbone.layer1...  (student)
+        teacher.backbone.layer1...       (teacher)
 
-    This function filters by role prefix, then strips all known prefixes
-    to produce clean keys matching a standalone torchvision/timm model.
-    """
-    STRIP_PREFIXES = ["module.", "model.", "backbone.", "head."]
-    ROLE_PREFIXES = ["student.", "teacher.", "assistant."]
+    For standalone MMPretrain checkpoints, keys have the form:
+        backbone.layer1...
+        head.fc.weight
 
-    # If a role is specified, first filter keys belonging to that role
-    if role:
-        role_prefix = f"{role}."
-        filtered = {k[len(role_prefix):]: v for k, v in state_dict.items()
-                     if k.startswith(role_prefix)}
-        if filtered:
-            state_dict = filtered
-
-    # Strip known structural prefixes
-    cleaned = {}
-    for k, v in state_dict.items():
-        new_key = k
-        # Remove any remaining role prefixes (e.g. if no role filter was used)
-        for rp in ROLE_PREFIXES:
-            if new_key.startswith(rp):
-                new_key = new_key[len(rp):]
-        # Remove structural prefixes
-        for prefix in STRIP_PREFIXES:
-            if new_key.startswith(prefix):
-                new_key = new_key[len(prefix):]
-        cleaned[new_key] = v
-
-    return cleaned
-
-
-def load_state_dict_flexible(model, checkpoint_path: str, role: str = "") -> bool:
-    """Load checkpoint with flexible key handling.
-
-    Args:
-        model: The PyTorch model to load weights into.
-        checkpoint_path: Path to .pth checkpoint file.
-        role: Optional role name ('student', 'teacher', 'assistant') to
-              extract from a distillation checkpoint that contains all roles.
+    This function:
+    1. Loads the checkpoint
+    2. Extracts the state_dict
+    3. Filters by role prefix if needed (architecture. or teacher.)
+    4. Returns the cleaned state_dict with original MMPretrain structure
+       (backbone.*, head.*, neck.* keys preserved)
     """
     if not os.path.exists(checkpoint_path):
         print(f"  WARNING: File not found: {checkpoint_path}")
-        return False
+        return None
 
     checkpoint = torch.load(
         checkpoint_path, map_location=DEVICE, weights_only=False
@@ -128,57 +103,178 @@ def load_state_dict_flexible(model, checkpoint_path: str, role: str = "") -> boo
     else:
         state_dict = checkpoint
 
-    # Log raw key prefixes for debugging
-    sample_keys = list(state_dict.keys())[:5]
-    print(f"  Raw checkpoint keys (first 5): {sample_keys}")
+    sample_keys = list(state_dict.keys())[:8]
+    print(f"  Raw keys (first 8): {sample_keys}")
 
-    # Try with role extraction first, then without
-    for try_role in ([role, ""] if role else [""]):
-        cleaned = _extract_role_keys(state_dict, try_role)
-        role_label = f"role='{try_role}'" if try_role else "no role filter"
+    # Determine if this is a distillation checkpoint
+    # MMRazor distillation: architecture.backbone.*, teacher.backbone.*
+    # Standalone MMPretrain: backbone.*, head.*
+    has_architecture = any(k.startswith("architecture.") for k in state_dict)
+    has_teacher = any(k.startswith("teacher.") for k in state_dict)
+    has_student = any(k.startswith("student.") for k in state_dict)
+    is_distill = has_architecture or has_teacher or has_student
 
-        model_keys = set(model.state_dict().keys())
-        matched = model_keys & set(cleaned.keys())
+    if is_distill:
+        # In MMRazor's SingleTeacherDistill:
+        #   student/architecture → "architecture." prefix
+        #   teacher → "teacher." prefix
+        if role == "student":
+            # Try "architecture." first (MMRazor convention), then "student."
+            for prefix in ["architecture.", "student."]:
+                filtered = {k[len(prefix):]: v for k, v in state_dict.items()
+                            if k.startswith(prefix)}
+                if filtered:
+                    print(f"  Extracted {len(filtered)} keys with prefix '{prefix}'")
+                    return filtered
+        elif role == "teacher":
+            prefix = "teacher."
+            filtered = {k[len(prefix):]: v for k, v in state_dict.items()
+                        if k.startswith(prefix)}
+            if filtered:
+                print(f"  Extracted {len(filtered)} keys with prefix '{prefix}'")
+                return filtered
+        else:
+            # No role specified, try to use the full state_dict
+            print(f"  ⚠️ Distillation checkpoint but no role specified")
 
-        try:
-            model.load_state_dict(cleaned, strict=True)
-            print(f"  ✅ Loaded strict ({role_label}): "
-                  f"{len(matched)}/{len(model_keys)} keys — "
-                  f"{os.path.basename(checkpoint_path)}")
-            return True
-        except RuntimeError:
-            if len(matched) > len(model_keys) * 0.5:
-                model.load_state_dict(cleaned, strict=False)
-                print(f"  ⚠️ Loaded non-strict ({role_label}): "
-                      f"{len(matched)}/{len(model_keys)} keys — "
-                      f"{os.path.basename(checkpoint_path)}")
-                return True
-            else:
-                print(f"  ⏭️ Skipping ({role_label}): only "
-                      f"{len(matched)}/{len(model_keys)} keys matched")
+    # Strip "module." prefix if present (DataParallel wrapper)
+    cleaned = {}
+    for k, v in state_dict.items():
+        new_key = k
+        if new_key.startswith("module."):
+            new_key = new_key[len("module."):]
+        cleaned[new_key] = v
 
-    # Last resort: load original state_dict non-strict
+    return cleaned
+
+
+def _create_mmpretrain_model(arch: str):
+    """Create an MMPretrain ImageClassifier model.
+
+    Args:
+        arch: One of 'swin_base', 'resnet152', 'resnet18'
+
+    Returns:
+        An mmpretrain ImageClassifier model, or falls back to a simple
+        wrapper if mmpretrain is not installed.
+    """
     try:
-        model.load_state_dict(state_dict, strict=False)
-        print(f"  ⚠️ Loaded (original keys, non-strict): "
-              f"{os.path.basename(checkpoint_path)}")
+        from mmpretrain.models import (ImageClassifier, ResNet,
+                                        SwinTransformer,
+                                        GlobalAveragePooling,
+                                        LinearClsHead, CrossEntropyLoss)
+
+        if arch == "swin_base":
+            model = ImageClassifier(
+                backbone=dict(
+                    type=SwinTransformer,
+                    arch='base',
+                    drop_path_rate=0.1,
+                    img_size=224,
+                ),
+                neck=dict(type=GlobalAveragePooling),
+                head=dict(
+                    type=LinearClsHead,
+                    num_classes=NUM_CLASSES,
+                    in_channels=1024,
+                    loss=dict(type=CrossEntropyLoss, loss_weight=1.0),
+                ),
+            )
+        elif arch == "resnet152":
+            model = ImageClassifier(
+                backbone=dict(
+                    type=ResNet,
+                    depth=152,
+                    num_stages=4,
+                    out_indices=(3,),
+                    style='pytorch',
+                ),
+                neck=dict(type=GlobalAveragePooling),
+                head=dict(
+                    type=LinearClsHead,
+                    num_classes=NUM_CLASSES,
+                    in_channels=2048,
+                    loss=dict(type=CrossEntropyLoss, loss_weight=1.0),
+                ),
+            )
+        elif arch == "resnet18":
+            model = ImageClassifier(
+                backbone=dict(
+                    type=ResNet,
+                    depth=18,
+                    num_stages=4,
+                    out_indices=(3,),
+                    style='pytorch',
+                ),
+                neck=dict(type=GlobalAveragePooling),
+                head=dict(
+                    type=LinearClsHead,
+                    num_classes=NUM_CLASSES,
+                    in_channels=512,
+                    loss=dict(type=CrossEntropyLoss, loss_weight=1.0),
+                ),
+            )
+        else:
+            raise ValueError(f"Unknown architecture: {arch}")
+
+        print(f"  Created MMPretrain model: {arch}")
+        return model
+
+    except ImportError:
+        print(f"  ⚠️ mmpretrain not installed, cannot create {arch}")
+        return None
+
+
+def _load_into_model(model, state_dict: dict, label: str) -> bool:
+    """Load a state_dict into a model with diagnostics."""
+    model_keys = set(model.state_dict().keys())
+    ckpt_keys = set(state_dict.keys())
+    matched = model_keys & ckpt_keys
+    missing = model_keys - ckpt_keys
+    unexpected = ckpt_keys - model_keys
+
+    print(f"  Keys: {len(matched)} matched, "
+          f"{len(missing)} missing, {len(unexpected)} unexpected")
+
+    if len(matched) == 0:
+        print(f"  ❌ No keys matched at all!")
+        if missing:
+            print(f"  Model expects (sample): {list(missing)[:3]}")
+        if unexpected:
+            print(f"  Checkpoint has (sample): {list(unexpected)[:3]}")
+        return False
+
+    match_ratio = len(matched) / len(model_keys)
+    if match_ratio < 0.5:
+        print(f"  ❌ Only {match_ratio:.0%} keys matched — refusing to load")
+        return False
+
+    try:
+        result = model.load_state_dict(state_dict, strict=False)
+        if result.missing_keys:
+            print(f"  ⚠️ Missing keys: {result.missing_keys[:5]}")
+        print(f"  ✅ Loaded {label}: {len(matched)}/{len(model_keys)} keys "
+              f"({match_ratio:.0%})")
         return True
     except Exception as e:
-        print(f"  ❌ Failed to load: {e}")
+        print(f"  ❌ Failed: {e}")
         return False
 
 
 def _try_load(model, candidate_dirs: list, model_name: str, role: str = "") -> bool:
-    """Try loading checkpoint from a prioritized list of directories or flat .pth files."""
+    """Try loading checkpoint from a prioritized list of directories."""
     for dirname in candidate_dirs:
         dirpath = os.path.join(CHECKPOINT_DIR, dirname)
         if not os.path.exists(dirpath):
             dirpath = os.path.join(CHECKPOINT_DIR, dirname + ".pth")
         if os.path.exists(dirpath):
             print(f"\n[{model_name}] Trying: {dirname}")
-            ckpt = find_best_checkpoint(dirpath)
-            if ckpt:
-                if load_state_dict_flexible(model, ckpt, role=role):
+            ckpt_path = find_best_checkpoint(dirpath)
+            if ckpt_path:
+                state_dict = _extract_state_dict(ckpt_path, role=role)
+                if state_dict and _load_into_model(
+                    model, state_dict, os.path.basename(ckpt_path)
+                ):
                     print(f"[{model_name}] ✅ Loaded from {dirname}")
                     return True
     print(f"[{model_name}] ❌ No checkpoint loaded")
@@ -186,25 +282,16 @@ def _try_load(model, candidate_dirs: list, model_name: str, role: str = "") -> b
 
 
 def load_all_models() -> dict:
-    """Load Teacher (Swin-B), Assistant (ResNet-152), Student (ResNet-18)."""
+    """Load Teacher (Swin-B), Assistant (ResNet-152), Student (ResNet-18).
+
+    Uses MMPretrain's native model architecture to match the training
+    checkpoint structure exactly.
+    """
     global MODELS
 
-    try:
-        import timm
-        teacher = timm.create_model(
-            "swin_base_patch4_window7_224",
-            num_classes=NUM_CLASSES,
-            pretrained=False,
-        )
-    except ImportError:
-        print("⚠️ timm not installed — skipping Swin-B teacher")
-        teacher = None
-
-    assistant = models.resnet152(weights=None)
-    assistant.fc = torch.nn.Linear(assistant.fc.in_features, NUM_CLASSES)
-
-    student = models.resnet18(weights=None)
-    student.fc = torch.nn.Linear(student.fc.in_features, NUM_CLASSES)
+    teacher = _create_mmpretrain_model("swin_base")
+    assistant = _create_mmpretrain_model("resnet152")
+    student = _create_mmpretrain_model("resnet18")
 
     entries = os.listdir(CHECKPOINT_DIR) if os.path.exists(CHECKPOINT_DIR) else []
     print(f"\nCheckpoint directory: {CHECKPOINT_DIR}")
@@ -212,17 +299,17 @@ def load_all_models() -> dict:
 
     if teacher is not None:
         _try_load(teacher, TEACHER_DIRS, "Teacher (Swin-B)", role="teacher")
-    _try_load(assistant, ASSISTANT_DIRS, "Assistant (ResNet-152)", role="student")
-    _try_load(student, STUDENT_DIRS, "Student (ResNet-18)", role="student")
+    if assistant is not None:
+        _try_load(assistant, ASSISTANT_DIRS, "Assistant (ResNet-152)", role="student")
+    if student is not None:
+        _try_load(student, STUDENT_DIRS, "Student (ResNet-18)", role="student")
 
-    if teacher is not None:
-        teacher = teacher.to(DEVICE).eval()
-    assistant = assistant.to(DEVICE).eval()
-    student = student.to(DEVICE).eval()
-
-    MODELS["teacher"] = teacher
-    MODELS["assistant"] = assistant
-    MODELS["student"] = student
+    for name, model in [("teacher", teacher), ("assistant", assistant), ("student", student)]:
+        if model is not None:
+            model = model.to(DEVICE).eval()
+            MODELS[name] = model
+        else:
+            MODELS[name] = None
 
     print(f"\n{'='*50}")
     print(f"Models loaded on {DEVICE}")
