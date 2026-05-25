@@ -153,23 +153,84 @@ def _extract_state_dict(checkpoint_path: str, role: str = "") -> dict | None:
 def _map_mmpretrain_keys(state_dict: dict, arch: str) -> dict:
     """Map MMPretrain checkpoint keys to torchvision/timm key format.
 
-    MMPretrain uses:
-        backbone.conv1.weight   → torchvision: conv1.weight
-        backbone.layer1.*       → torchvision: layer1.*
-        head.fc.weight          → torchvision: fc.weight
-        backbone.stages.*       → timm Swin: layers.* (with further renaming)
+    For ResNet (torchvision):
+        backbone.conv1.weight  → conv1.weight
+        head.fc.weight         → fc.weight
 
-    Returns a new state_dict with mapped keys.
+    For Swin-B (timm):
+        backbone.stages.*      → layers.*
+        backbone.patch_embed.projection → patch_embed.proj
+        *.attn.w_msa.*         → *.attn.*
+        *.ffn.layers.0.0.*     → *.mlp.fc1.*
+        *.ffn.layers.1.*       → *.mlp.fc2.*
+        *.downsample.projection → *.downsample.reduction
+        backbone.norm3.*       → norm.*
+        head.fc.*              → head.fc.* (unchanged for timm)
+    """
+    if arch == "swin_base":
+        return _map_swin_keys(state_dict)
+    else:
+        return _map_resnet_keys(state_dict)
+
+
+def _map_resnet_keys(state_dict: dict) -> dict:
+    """Map MMPretrain ResNet keys to torchvision format."""
+    mapped = {}
+    for k, v in state_dict.items():
+        new_key = k
+        if new_key.startswith("backbone."):
+            new_key = new_key[len("backbone."):]
+        elif new_key.startswith("head."):
+            new_key = new_key[len("head."):]
+        mapped[new_key] = v
+    return mapped
+
+
+def _map_swin_keys(state_dict: dict) -> dict:
+    """Map MMPretrain SwinTransformer keys to timm format.
+
+    Key differences between MMPretrain and timm Swin:
+        MMPretrain                          timm
+        ──────────                          ────
+        backbone.patch_embed.projection     patch_embed.proj
+        backbone.stages.X.                  layers.X.
+        *.attn.w_msa.*                      *.attn.*
+        *.ffn.layers.0.0.*                  *.mlp.fc1.*
+        *.ffn.layers.1.*                    *.mlp.fc2.*
+        *.downsample.projection.*           *.downsample.reduction.*
+        backbone.norm3.*                    norm.*
+        head.fc.*                           head.fc.*
     """
     mapped = {}
     for k, v in state_dict.items():
         new_key = k
-        # Strip backbone. prefix
+
+        # 1. Strip backbone. prefix
         if new_key.startswith("backbone."):
             new_key = new_key[len("backbone."):]
-        # Strip head. prefix (head.fc.weight → fc.weight)
-        elif new_key.startswith("head."):
-            new_key = new_key[len("head."):]
+
+        # 2. stages → layers
+        new_key = new_key.replace("stages.", "layers.")
+
+        # 3. patch_embed.projection → patch_embed.proj
+        new_key = new_key.replace("patch_embed.projection.", "patch_embed.proj.")
+
+        # 4. attn.w_msa. → attn. (remove WindowMSA wrapper)
+        new_key = new_key.replace(".attn.w_msa.", ".attn.")
+
+        # 5. ffn.layers.0.0. → mlp.fc1. (first Linear in FFN)
+        new_key = new_key.replace(".ffn.layers.0.0.", ".mlp.fc1.")
+        # 6. ffn.layers.1. → mlp.fc2. (second Linear in FFN)
+        new_key = new_key.replace(".ffn.layers.1.", ".mlp.fc2.")
+
+        # 7. downsample.projection → downsample.reduction
+        new_key = new_key.replace(".downsample.projection.", ".downsample.reduction.")
+
+        # 8. norm3 → norm (final LayerNorm for output stage 3)
+        if new_key.startswith("norm3."):
+            new_key = new_key.replace("norm3.", "norm.")
+
+        # head.fc stays as head.fc (timm uses head.fc too)
 
         mapped[new_key] = v
 
