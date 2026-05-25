@@ -4,6 +4,8 @@ Full Teacher → Assistant → Student inference pipeline.
 MMPretrain's ImageClassifier.forward() in 'tensor' mode returns the
 logits tensor directly — we use this mode for clean integration.
 """
+from __future__ import annotations
+
 import torch
 
 from utils.config import MODEL_INFO, MODEL_ROLES

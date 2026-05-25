@@ -6,6 +6,8 @@ IMPORTANT: Models MUST be created with MMPretrain's architecture
 neck + LinearClsHead) because the checkpoints were trained with MMPretrain.
 Using torchvision or timm models results in key mismatches and broken inference.
 """
+from __future__ import annotations
+
 import os
 import torch
 
@@ -281,13 +283,136 @@ def _try_load(model, candidate_dirs: list, model_name: str, role: str = "") -> b
     return False
 
 
+def _preprocess_checkpoint(src_path: str, role: str) -> str | None:
+    """Pre-process a distillation checkpoint into a clean standalone file.
+
+    If the checkpoint contains architecture.*/teacher.* prefixes (MMRazor
+    distillation format), extract the relevant weights, strip the prefix,
+    and save a *_clean.pth file next to the original.
+
+    Returns the path to the clean file (or original if already clean).
+    Skips processing if the clean file already exists (cached).
+    """
+    if not os.path.exists(src_path):
+        return None
+
+    # Determine clean file path
+    base, ext = os.path.splitext(src_path)
+    clean_path = base + "_clean" + ext
+
+    # Cache: skip if already preprocessed
+    if os.path.exists(clean_path):
+        print(f"  ♻️  Using cached clean checkpoint: {os.path.basename(clean_path)}")
+        return clean_path
+
+    # Load and inspect
+    checkpoint = torch.load(src_path, map_location="cpu", weights_only=False)
+    if isinstance(checkpoint, dict):
+        sd = checkpoint.get("state_dict", checkpoint.get("model", checkpoint))
+    else:
+        sd = checkpoint
+
+    has_arch = any(k.startswith("architecture.") for k in sd)
+    has_teacher_keys = any(k.startswith("teacher.") for k in sd)
+    is_distill = has_arch or has_teacher_keys
+
+    if not is_distill:
+        # Already a standalone checkpoint — no preprocessing needed
+        return src_path
+
+    # Extract the relevant subset based on role
+    clean_sd = {}
+    if role == "student":
+        for prefix in ["architecture.", "student."]:
+            clean_sd = {k[len(prefix):]: v for k, v in sd.items()
+                        if k.startswith(prefix)}
+            if clean_sd:
+                print(f"  🔧 Extracted {len(clean_sd)} student keys "
+                      f"(prefix '{prefix}') from {os.path.basename(src_path)}")
+                break
+    elif role == "teacher":
+        prefix = "teacher."
+        clean_sd = {k[len(prefix):]: v for k, v in sd.items()
+                    if k.startswith(prefix)}
+        if clean_sd:
+            print(f"  🔧 Extracted {len(clean_sd)} teacher keys "
+                  f"from {os.path.basename(src_path)}")
+
+    if not clean_sd:
+        print(f"  ⚠️ Could not extract {role} keys from "
+              f"{os.path.basename(src_path)}")
+        return src_path
+
+    # Save clean checkpoint
+    meta = checkpoint.get("meta", {}) if isinstance(checkpoint, dict) else {}
+    torch.save({"state_dict": clean_sd, "meta": meta}, clean_path)
+    size_mb = os.path.getsize(clean_path) / (1024 * 1024)
+    print(f"  💾 Saved clean checkpoint: {os.path.basename(clean_path)} "
+          f"({len(clean_sd)} keys, {size_mb:.1f} MB)")
+
+    return clean_path
+
+
+# Mapping: (candidate_dir_name, role_to_extract)
+_PREPROCESS_MAP = {
+    # Distillation checkpoints that need student extraction
+    "swinb_r152":       "student",
+    "dkd_swinb_r152":   "student",
+    "swinb_r18":        "student",
+    "dkd_swinb_r18":    "student",
+    "disilledr152_r18": "student",
+    "dkd_r152_r18":     "student",
+}
+
+
+def preprocess_checkpoints():
+    """Auto-detect and preprocess distillation checkpoints.
+
+    Scans CHECKPOINT_DIR for known distillation checkpoints, extracts
+    student weights, and saves clean standalone files. Clean files are
+    cached — this only runs once per checkpoint.
+    """
+    if not os.path.exists(CHECKPOINT_DIR):
+        return
+
+    print(f"\n{'─'*50}")
+    print("🔧 Auto-preprocessing checkpoints...")
+    print(f"{'─'*50}")
+
+    processed = 0
+    for name, role in _PREPROCESS_MAP.items():
+        # Try both directory and .pth file
+        for candidate in [
+            os.path.join(CHECKPOINT_DIR, name),
+            os.path.join(CHECKPOINT_DIR, name + ".pth"),
+        ]:
+            if os.path.exists(candidate):
+                ckpt_path = find_best_checkpoint(candidate)
+                if ckpt_path:
+                    result = _preprocess_checkpoint(ckpt_path, role)
+                    if result and result != ckpt_path:
+                        processed += 1
+                break
+
+    if processed > 0:
+        print(f"\n  ✅ Preprocessed {processed} checkpoint(s)")
+    else:
+        print(f"\n  ✅ All checkpoints already clean or cached")
+
+    print(f"{'─'*50}\n")
+
+
 def load_all_models() -> dict:
     """Load Teacher (Swin-B), Assistant (ResNet-152), Student (ResNet-18).
 
-    Uses MMPretrain's native model architecture to match the training
+    Automatically preprocesses distillation checkpoints on first run,
+    then uses MMPretrain's native model architecture to match the
     checkpoint structure exactly.
     """
     global MODELS
+
+    # ── Step 0: Auto-preprocess distillation checkpoints ──
+    preprocess_checkpoints()
 
     teacher = _create_mmpretrain_model("swin_base")
     assistant = _create_mmpretrain_model("resnet152")
