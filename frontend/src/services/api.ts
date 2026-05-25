@@ -1,9 +1,15 @@
 import axios from 'axios';
 import type { InferenceResponse, GradCAMData } from '@/types/inference';
 
+// Ngrok free tier shows an interstitial HTML page unless this header is sent
+const ngrokHeaders = { 'ngrok-skip-browser-warning': '1' };
+
 export async function checkHealth(apiUrl: string): Promise<boolean> {
   try {
-    const res = await axios.get(`${apiUrl}/api/health`, { timeout: 5000 });
+    const res = await axios.get(`${apiUrl}/api/health`, {
+      timeout: 5000,
+      headers: ngrokHeaders,
+    });
     return res.data?.status === 'ok';
   } catch {
     return false;
@@ -20,7 +26,7 @@ export async function runInference(
   formData.append('temperature', temperature.toString());
 
   const res = await axios.post(`${apiUrl}/api/inference`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    headers: { 'Content-Type': 'multipart/form-data', ...ngrokHeaders },
     timeout: 60000,
   });
   return res.data;
@@ -36,7 +42,7 @@ export async function recomputeDistribution(
   formData.append('temperature', temperature.toString());
 
   const res = await axios.post(`${apiUrl}/api/distribution`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    headers: { 'Content-Type': 'multipart/form-data', ...ngrokHeaders },
     timeout: 30000,
   });
   return res.data;
@@ -50,7 +56,7 @@ export async function getGradCAM(
   formData.append('file', file);
 
   const res = await axios.post(`${apiUrl}/api/gradcam`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    headers: { 'Content-Type': 'multipart/form-data', ...ngrokHeaders },
     timeout: 60000,
   });
   return res.data.gradcam;
