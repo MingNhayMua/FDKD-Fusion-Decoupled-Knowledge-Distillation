@@ -157,73 +157,60 @@ def _create_mmpretrain_model(arch: str):
         arch: One of 'swin_base', 'resnet152', 'resnet18'
 
     Returns:
-        An mmpretrain ImageClassifier model, or falls back to a simple
-        wrapper if mmpretrain is not installed.
+        An mmpretrain ImageClassifier model, or None if mmpretrain
+        is not installed.
+
+    Uses direct class instantiation instead of dict-based config
+    to avoid mmengine registry overhead (dataclass hang on Colab).
     """
     try:
-        from mmpretrain.models import (ImageClassifier, ResNet,
-                                        SwinTransformer,
-                                        GlobalAveragePooling,
-                                        LinearClsHead, CrossEntropyLoss)
+        from mmpretrain.models.classifiers import ImageClassifier
+        from mmpretrain.models.backbones import ResNet, SwinTransformer
+        from mmpretrain.models.necks import GlobalAveragePooling
+        from mmpretrain.models.heads import LinearClsHead
+        from torch.nn import CrossEntropyLoss
 
         if arch == "swin_base":
-            model = ImageClassifier(
-                backbone=dict(
-                    type=SwinTransformer,
-                    arch='base',
-                    drop_path_rate=0.1,
-                    img_size=224,
-                ),
-                neck=dict(type=GlobalAveragePooling),
-                head=dict(
-                    type=LinearClsHead,
-                    num_classes=NUM_CLASSES,
-                    in_channels=1024,
-                    loss=dict(type=CrossEntropyLoss, loss_weight=1.0),
-                ),
+            backbone = SwinTransformer(arch='base', drop_path_rate=0.1, img_size=224)
+            neck = GlobalAveragePooling()
+            head = LinearClsHead(
+                num_classes=NUM_CLASSES,
+                in_channels=1024,
+                loss=dict(type='CrossEntropyLoss', loss_weight=1.0),
             )
         elif arch == "resnet152":
-            model = ImageClassifier(
-                backbone=dict(
-                    type=ResNet,
-                    depth=152,
-                    num_stages=4,
-                    out_indices=(3,),
-                    style='pytorch',
-                ),
-                neck=dict(type=GlobalAveragePooling),
-                head=dict(
-                    type=LinearClsHead,
-                    num_classes=NUM_CLASSES,
-                    in_channels=2048,
-                    loss=dict(type=CrossEntropyLoss, loss_weight=1.0),
-                ),
+            backbone = ResNet(depth=152, num_stages=4, out_indices=(3,), style='pytorch')
+            neck = GlobalAveragePooling()
+            head = LinearClsHead(
+                num_classes=NUM_CLASSES,
+                in_channels=2048,
+                loss=dict(type='CrossEntropyLoss', loss_weight=1.0),
             )
         elif arch == "resnet18":
-            model = ImageClassifier(
-                backbone=dict(
-                    type=ResNet,
-                    depth=18,
-                    num_stages=4,
-                    out_indices=(3,),
-                    style='pytorch',
-                ),
-                neck=dict(type=GlobalAveragePooling),
-                head=dict(
-                    type=LinearClsHead,
-                    num_classes=NUM_CLASSES,
-                    in_channels=512,
-                    loss=dict(type=CrossEntropyLoss, loss_weight=1.0),
-                ),
+            backbone = ResNet(depth=18, num_stages=4, out_indices=(3,), style='pytorch')
+            neck = GlobalAveragePooling()
+            head = LinearClsHead(
+                num_classes=NUM_CLASSES,
+                in_channels=512,
+                loss=dict(type='CrossEntropyLoss', loss_weight=1.0),
             )
         else:
             raise ValueError(f"Unknown architecture: {arch}")
 
+        # Build ImageClassifier with pre-instantiated components
+        model = ImageClassifier(
+            backbone=backbone,
+            neck=neck,
+            head=head,
+        )
         print(f"  Created MMPretrain model: {arch}")
         return model
 
-    except ImportError:
-        print(f"  ⚠️ mmpretrain not installed, cannot create {arch}")
+    except ImportError as e:
+        print(f"  ⚠️ mmpretrain not available ({e}), cannot create {arch}")
+        return None
+    except Exception as e:
+        print(f"  ❌ Failed to create {arch}: {e}")
         return None
 
 
