@@ -1,6 +1,4 @@
-# FDKD: Fusion Decoupled Knowledge Distillation
-
-This repository provides the official implementation of the paper: **Fusion Decoupled Knowledge Distillation for Progressive Knowledge Transfer**
+# FDKD: Fusion Decoupled Knowledge Distillation for Progressive Knowledge Transfer
 
 Authors: Quang-Minh Tran†, Viet-Hoang Nguyen† and Vinh-Tiep Nguyen.
 
@@ -29,7 +27,6 @@ This repository includes:
 ## 🏗 Project Structure
 
 ```
-Project_CS338/
 ├── run_colab.py                        ← Colab launcher (entry point)
 │
 ├── utils/                              ← Shared modules (used by all)
@@ -80,16 +77,15 @@ Project_CS338/
 
 ```python
 # Cell 1: Clone & install
-!git clone https://github.com/YOUR_USER/Project_CS338.git
-!pip install -r Project_CS338/backend/requirements.txt
+!git clone https://github.com/MingNhayMua/FDKD-Fusion-Decoupled-Knowledge-Distillation.git
+%cd FDKD-Fusion-Decoupled-Knowledge-Distillation
+!pip install -r backend/requirements.txt
 
 # Cell 2: Mount Google Drive
 from google.colab import drive
 drive.mount('/content/drive')
 
 # Cell 3: Start server
-import sys
-sys.path.insert(0, '/content/Project_CS338')
 from run_colab import start_server
 
 start_server(
@@ -144,7 +140,7 @@ The backend auto-detects checkpoint directories by name:
 |---|---|---|
 | `swinb_fully/` | Teacher | Swin-B (86.95M) |
 | `dkd_swinb_r152/` | Assistant (FDKD Stage 1) | ResNet-152 (58.55M) |
-| `dkd_r152(distilled)_r18/` | Student (FDKD Stage 2) | ResNet-18 (11.28M) |
+| `dkd_r152_r18/` | Student (FDKD Stage 2) | ResNet-18 (11.28M) |
 | `r152_fully/` | Assistant (baseline) | ResNet-152 |
 | `r18_fully/` | Student (baseline) | ResNet-18 |
 | `dkd_swinb_r18/` | Student (direct DKD) | ResNet-18 |

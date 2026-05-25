@@ -20,7 +20,7 @@ CHECKPOINT_DIR = os.environ.get(
 # Priority order: first match wins
 TEACHER_DIRS = ["swinb_fully"]
 ASSISTANT_DIRS = ["dkd_swinb_r152", "r152_fully"]
-STUDENT_DIRS = ["dkd_r152(distilled)_r18", "dkd_swinb_r18", "r18_fully"]
+STUDENT_DIRS = ["dkd_r152_r18", "dkd_swinb_r18", "r18_fully"]
 
 # Checkpoint file extensions to search for
 CHECKPOINT_EXTENSIONS = ('.pth', '.pt', '.pkl', '.bin', '.ckpt', '.pth.tar')
