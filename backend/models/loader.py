@@ -193,14 +193,21 @@ def _map_swin_keys(state_dict: dict) -> dict:
         MMPretrain                          timm
         ──────────                          ────
         backbone.patch_embed.projection     patch_embed.proj
-        backbone.stages.X.                  layers.X.
+        backbone.stages.X.blocks.*          layers.X.blocks.*
+        backbone.stages.X.downsample.*      layers.X+1.downsample.*  (index shift!)
         *.attn.w_msa.*                      *.attn.*
         *.ffn.layers.0.0.*                  *.mlp.fc1.*
         *.ffn.layers.1.*                    *.mlp.fc2.*
         *.downsample.projection.*           *.downsample.reduction.*
         backbone.norm3.*                    norm.*
         head.fc.*                           head.fc.*
+
+    NOTE: MMPretrain places downsample at the END of stage X, while
+    timm places it at the START of layer X+1. So the downsample index
+    must be incremented by 1 during mapping.
     """
+    import re
+
     mapped = {}
     for k, v in state_dict.items():
         new_key = k
@@ -209,8 +216,16 @@ def _map_swin_keys(state_dict: dict) -> dict:
         if new_key.startswith("backbone."):
             new_key = new_key[len("backbone."):]
 
-        # 2. stages → layers
-        new_key = new_key.replace("stages.", "layers.")
+        # 2. Handle stages → layers with downsample index shift
+        #    stages.X.downsample.* → layers.(X+1).downsample.*
+        #    stages.X.blocks.*     → layers.X.blocks.* (no shift)
+        m = re.match(r'stages\.(\d+)\.downsample\.(.*)', new_key)
+        if m:
+            idx = int(m.group(1)) + 1  # shift index by +1
+            rest = m.group(2)
+            new_key = f"layers.{idx}.downsample.{rest}"
+        else:
+            new_key = new_key.replace("stages.", "layers.")
 
         # 3. patch_embed.projection → patch_embed.proj
         new_key = new_key.replace("patch_embed.projection.", "patch_embed.proj.")
