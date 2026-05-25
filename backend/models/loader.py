@@ -106,9 +106,11 @@ def load_state_dict_flexible(model, checkpoint_path: str) -> bool:
 
 
 def _try_load(model, candidate_dirs: list, model_name: str) -> bool:
-    """Try loading checkpoint from a prioritized list of directories."""
+    """Try loading checkpoint from a prioritized list of directories or flat .pth files."""
     for dirname in candidate_dirs:
         dirpath = os.path.join(CHECKPOINT_DIR, dirname)
+        if not os.path.exists(dirpath):
+            dirpath = os.path.join(CHECKPOINT_DIR, dirname + ".pth")
         if os.path.exists(dirpath):
             print(f"\n[{model_name}] Trying: {dirname}")
             ckpt = find_best_checkpoint(dirpath)
