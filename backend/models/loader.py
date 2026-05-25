@@ -150,75 +150,91 @@ def _extract_state_dict(checkpoint_path: str, role: str = "") -> dict | None:
     return cleaned
 
 
-def _create_mmpretrain_model(arch: str):
-    """Create an MMPretrain ImageClassifier model.
+def _map_mmpretrain_keys(state_dict: dict, arch: str) -> dict:
+    """Map MMPretrain checkpoint keys to torchvision/timm key format.
+
+    MMPretrain uses:
+        backbone.conv1.weight   → torchvision: conv1.weight
+        backbone.layer1.*       → torchvision: layer1.*
+        head.fc.weight          → torchvision: fc.weight
+        backbone.stages.*       → timm Swin: layers.* (with further renaming)
+
+    Returns a new state_dict with mapped keys.
+    """
+    mapped = {}
+    for k, v in state_dict.items():
+        new_key = k
+        # Strip backbone. prefix
+        if new_key.startswith("backbone."):
+            new_key = new_key[len("backbone."):]
+        # Strip head. prefix (head.fc.weight → fc.weight)
+        elif new_key.startswith("head."):
+            new_key = new_key[len("head."):]
+
+        mapped[new_key] = v
+
+    return mapped
+
+
+def _create_model(arch: str):
+    """Create a model using torchvision (ResNet) or timm (Swin-B).
+
+    This avoids needing mmcv/mmpretrain for model creation — only
+    standard PyTorch libraries are required. The checkpoint key mapping
+    is handled by _map_mmpretrain_keys() during loading.
 
     Args:
         arch: One of 'swin_base', 'resnet152', 'resnet18'
-
-    Returns:
-        An mmpretrain ImageClassifier model, or None if mmpretrain
-        is not installed.
-
-    Uses direct class instantiation instead of dict-based config
-    to avoid mmengine registry overhead (dataclass hang on Colab).
     """
-    try:
-        from mmpretrain.models.classifiers import ImageClassifier
-        from mmpretrain.models.backbones import ResNet, SwinTransformer
-        from mmpretrain.models.necks import GlobalAveragePooling
-        from mmpretrain.models.heads import LinearClsHead
-        from torch.nn import CrossEntropyLoss
+    from torchvision import models
 
-        if arch == "swin_base":
-            backbone = SwinTransformer(arch='base', drop_path_rate=0.1, img_size=224)
-            neck = GlobalAveragePooling()
-            head = LinearClsHead(
+    if arch == "swin_base":
+        try:
+            import timm
+            model = timm.create_model(
+                "swin_base_patch4_window7_224",
                 num_classes=NUM_CLASSES,
-                in_channels=1024,
-                loss=dict(type='CrossEntropyLoss', loss_weight=1.0),
+                pretrained=False,
             )
-        elif arch == "resnet152":
-            backbone = ResNet(depth=152, num_stages=4, out_indices=(3,), style='pytorch')
-            neck = GlobalAveragePooling()
-            head = LinearClsHead(
-                num_classes=NUM_CLASSES,
-                in_channels=2048,
-                loss=dict(type='CrossEntropyLoss', loss_weight=1.0),
-            )
-        elif arch == "resnet18":
-            backbone = ResNet(depth=18, num_stages=4, out_indices=(3,), style='pytorch')
-            neck = GlobalAveragePooling()
-            head = LinearClsHead(
-                num_classes=NUM_CLASSES,
-                in_channels=512,
-                loss=dict(type='CrossEntropyLoss', loss_weight=1.0),
-            )
-        else:
-            raise ValueError(f"Unknown architecture: {arch}")
+            print(f"  Created timm model: {arch}")
+            return model
+        except ImportError:
+            print(f"  ⚠️ timm not installed, cannot create {arch}")
+            return None
 
-        # Build ImageClassifier with pre-instantiated components
-        model = ImageClassifier(
-            backbone=backbone,
-            neck=neck,
-            head=head,
-        )
-        print(f"  Created MMPretrain model: {arch}")
+    elif arch == "resnet152":
+        model = models.resnet152(weights=None)
+        model.fc = torch.nn.Linear(model.fc.in_features, NUM_CLASSES)
+        print(f"  Created torchvision model: {arch}")
         return model
 
-    except ImportError as e:
-        print(f"  ⚠️ mmpretrain not available ({e}), cannot create {arch}")
-        return None
-    except Exception as e:
-        print(f"  ❌ Failed to create {arch}: {e}")
-        return None
+    elif arch == "resnet18":
+        model = models.resnet18(weights=None)
+        model.fc = torch.nn.Linear(model.fc.in_features, NUM_CLASSES)
+        print(f"  Created torchvision model: {arch}")
+        return model
+
+    else:
+        raise ValueError(f"Unknown architecture: {arch}")
 
 
-def _load_into_model(model, state_dict: dict, label: str) -> bool:
-    """Load a state_dict into a model with diagnostics."""
+def _load_into_model(model, state_dict: dict, label: str, arch: str = "") -> bool:
+    """Load a state_dict into a model with diagnostics.
+
+    Automatically maps MMPretrain keys (backbone.*, head.*) to
+    torchvision/timm keys if they don't match directly.
+    """
     model_keys = set(model.state_dict().keys())
     ckpt_keys = set(state_dict.keys())
     matched = model_keys & ckpt_keys
+
+    # If keys don't match, try mapping MMPretrain → torchvision/timm
+    if len(matched) < len(model_keys) * 0.5:
+        print(f"  Direct match: {len(matched)}/{len(model_keys)} — trying key mapping...")
+        state_dict = _map_mmpretrain_keys(state_dict, arch)
+        ckpt_keys = set(state_dict.keys())
+        matched = model_keys & ckpt_keys
+
     missing = model_keys - ckpt_keys
     unexpected = ckpt_keys - model_keys
 
@@ -250,7 +266,8 @@ def _load_into_model(model, state_dict: dict, label: str) -> bool:
         return False
 
 
-def _try_load(model, candidate_dirs: list, model_name: str, role: str = "") -> bool:
+def _try_load(model, candidate_dirs: list, model_name: str,
+              role: str = "", arch: str = "") -> bool:
     """Try loading checkpoint from a prioritized list of directories."""
     for dirname in candidate_dirs:
         dirpath = os.path.join(CHECKPOINT_DIR, dirname)
@@ -262,7 +279,7 @@ def _try_load(model, candidate_dirs: list, model_name: str, role: str = "") -> b
             if ckpt_path:
                 state_dict = _extract_state_dict(ckpt_path, role=role)
                 if state_dict and _load_into_model(
-                    model, state_dict, os.path.basename(ckpt_path)
+                    model, state_dict, os.path.basename(ckpt_path), arch=arch
                 ):
                     print(f"[{model_name}] ✅ Loaded from {dirname}")
                     return True
@@ -393,28 +410,31 @@ def load_all_models() -> dict:
     """Load Teacher (Swin-B), Assistant (ResNet-152), Student (ResNet-18).
 
     Automatically preprocesses distillation checkpoints on first run,
-    then uses MMPretrain's native model architecture to match the
-    checkpoint structure exactly.
+    then uses torchvision/timm models with MMPretrain key mapping.
+    No mmcv dependency required.
     """
     global MODELS
 
     # ── Step 0: Auto-preprocess distillation checkpoints ──
     preprocess_checkpoints()
 
-    teacher = _create_mmpretrain_model("swin_base")
-    assistant = _create_mmpretrain_model("resnet152")
-    student = _create_mmpretrain_model("resnet18")
+    teacher = _create_model("swin_base")
+    assistant = _create_model("resnet152")
+    student = _create_model("resnet18")
 
     entries = os.listdir(CHECKPOINT_DIR) if os.path.exists(CHECKPOINT_DIR) else []
     print(f"\nCheckpoint directory: {CHECKPOINT_DIR}")
     print(f"Entries: {entries}\n")
 
     if teacher is not None:
-        _try_load(teacher, TEACHER_DIRS, "Teacher (Swin-B)", role="teacher")
+        _try_load(teacher, TEACHER_DIRS, "Teacher (Swin-B)",
+                  role="teacher", arch="swin_base")
     if assistant is not None:
-        _try_load(assistant, ASSISTANT_DIRS, "Assistant (ResNet-152)", role="student")
+        _try_load(assistant, ASSISTANT_DIRS, "Assistant (ResNet-152)",
+                  role="student", arch="resnet152")
     if student is not None:
-        _try_load(student, STUDENT_DIRS, "Student (ResNet-18)", role="student")
+        _try_load(student, STUDENT_DIRS, "Student (ResNet-18)",
+                  role="student", arch="resnet18")
 
     for name, model in [("teacher", teacher), ("assistant", assistant), ("student", student)]:
         if model is not None:

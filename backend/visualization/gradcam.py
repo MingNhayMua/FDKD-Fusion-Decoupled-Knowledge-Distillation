@@ -1,8 +1,7 @@
 """
 Grad-CAM visualization for Teacher / Assistant / Student.
 
-Updated for MMPretrain model architecture where backbone is accessed
-via model.backbone.* instead of model.layer4.* (torchvision).
+Uses torchvision (ResNet) and timm (Swin-B) models directly.
 """
 import io
 import base64
@@ -11,48 +10,6 @@ import torch
 from PIL import Image
 
 from backend.models.loader import MODELS
-from backend.inference.pipeline import _get_logits
-
-
-class _MMPretrainWrapper(torch.nn.Module):
-    """Wrapper to make MMPretrain model compatible with pytorch-grad-cam.
-
-    pytorch-grad-cam expects model(input) → logits tensor,
-    but MMPretrain's forward() returns DataSample objects.
-    This wrapper uses the direct backbone→neck→head.fc path.
-    """
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def forward(self, x):
-        return _get_logits(self.model, x)
-
-
-def _get_target_layers(model, key: str):
-    """Get the appropriate target layer for Grad-CAM.
-
-    For MMPretrain models, the backbone is accessed via model.backbone.*
-    """
-    backbone = model.backbone
-
-    if key == "teacher":
-        # Swin Transformer: last stage, last block
-        try:
-            return [backbone.stages[-1].blocks[-1].norm1]
-        except (AttributeError, IndexError):
-            try:
-                return [backbone.layers[-1].blocks[-1].norm1]
-            except (AttributeError, IndexError):
-                print(f"  ⚠️ Cannot find Swin target layer")
-                return None
-    else:
-        # ResNet: last layer4 block
-        try:
-            return [backbone.layer4[-1]]
-        except (AttributeError, IndexError):
-            print(f"  ⚠️ Cannot find ResNet target layer")
-            return None
 
 
 def generate_gradcam_all(input_tensor: torch.Tensor, img_np: np.ndarray) -> dict:
@@ -73,14 +30,15 @@ def generate_gradcam_all(input_tensor: torch.Tensor, img_np: np.ndarray) -> dict
             continue
 
         try:
-            target_layers = _get_target_layers(model, key)
-            if target_layers is None:
-                results[key] = None
-                continue
+            # Target layer differs per architecture
+            if key == "teacher":
+                # timm Swin-B: last layer's last block
+                target_layers = [model.layers[-1].blocks[-1].norm1]
+            else:
+                # torchvision ResNet: last conv block
+                target_layers = [model.layer4[-1]]
 
-            # Wrap model so GradCAM gets logits from forward()
-            wrapper = _MMPretrainWrapper(model)
-            cam = GradCAM(model=wrapper, target_layers=target_layers)
+            cam = GradCAM(model=model, target_layers=target_layers)
             grayscale_cam = cam(input_tensor=input_tensor, targets=None)
             visualization = show_cam_on_image(
                 img_np, grayscale_cam[0, :], use_rgb=True
