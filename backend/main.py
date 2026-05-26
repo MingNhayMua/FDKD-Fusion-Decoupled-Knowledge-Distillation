@@ -138,6 +138,7 @@ def _overlay_heatmap(image_bytes: bytes, cam) -> str:
 
     buf = io.BytesIO()
     blended.save(buf, format="PNG")
+    buf.seek(0)
     return base64.b64encode(buf.read()).decode("utf-8")
 
 
