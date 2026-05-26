@@ -93,7 +93,7 @@ def _occlusion_map(model, x_input, class_idx, window=16, stride=8):
     return _smooth(heatmap)
 
 
-def _smooth(img: np.ndarray, sigma: float = 3.0) -> np.ndarray:
+def _smooth(img: np.ndarray, sigma: float = 1.0) -> np.ndarray:
     """Gaussian blur for smoother visualization."""
     from scipy.ndimage import gaussian_filter
     return gaussian_filter(img, sigma=sigma)

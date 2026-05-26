@@ -134,7 +134,7 @@ def _overlay_heatmap(image_bytes: bytes, cam) -> str:
 
     # Blend
     heatmap_pil = Image.fromarray(heatmap).resize((224, 224))
-    blended = Image.blend(original, heatmap_pil, alpha=0.5)
+    blended = Image.blend(original, heatmap_pil, alpha=0.6)
 
     buf = io.BytesIO()
     blended.save(buf, format="PNG")
@@ -143,13 +143,13 @@ def _overlay_heatmap(image_bytes: bytes, cam) -> str:
 
 
 def _apply_jet_colormap(gray: np.ndarray):
-    """Simple jet colormap: 0=blue, 128=green, 255=red."""
+    """Jet colormap with enhanced contrast."""
     h, w = gray.shape
     colored = np.zeros((h, w, 3), dtype=np.uint8)
-    # Blue channel: 1 - 2*|x - 0.25|
-    colored[:, :, 2] = np.clip(255 * (1 - 2 * np.abs(gray / 255.0 - 0.25)), 0, 255)
-    # Green channel: 1 - 2*|x - 0.5|  
-    colored[:, :, 1] = np.clip(255 * (1 - 2 * np.abs(gray / 255.0 - 0.5)), 0, 255)
-    # Red channel: 1 - 2*|x - 0.75|
-    colored[:, :, 0] = np.clip(255 * (1 - 2 * np.abs(gray / 255.0 - 0.75)), 0, 255)
+    x = gray / 255.0
+    # Boost contrast: push values away from 0.5
+    x = np.power(x, 0.7)  # gamma < 1 brightens midtones
+    colored[:, :, 2] = np.clip(255 * (1 - 2 * np.abs(x - 0.25)), 0, 255)
+    colored[:, :, 1] = np.clip(255 * (1 - 2 * np.abs(x - 0.5)), 0, 255)
+    colored[:, :, 0] = np.clip(255 * (1 - 2 * np.abs(x - 0.75)), 0, 255)
     return colored
