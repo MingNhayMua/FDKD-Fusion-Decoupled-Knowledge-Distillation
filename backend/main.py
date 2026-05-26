@@ -10,6 +10,7 @@ Routes:
 import uuid
 import base64
 import io
+import numpy as np
 
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -123,8 +124,6 @@ async def gradcam(file: UploadFile = File(...)):
 
 def _overlay_heatmap(image_bytes: bytes, cam) -> str:
     """Overlay heatmap on original image using PIL, return base64 PNG."""
-    import numpy as np
-
     original = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     original = original.resize((224, 224))
 
@@ -144,7 +143,6 @@ def _overlay_heatmap(image_bytes: bytes, cam) -> str:
 
 def _apply_jet_colormap(gray: np.ndarray):
     """Simple jet colormap: 0=blue, 128=green, 255=red."""
-    import numpy as np
     h, w = gray.shape
     colored = np.zeros((h, w, 3), dtype=np.uint8)
     # Blue channel: 1 - 2*|x - 0.25|
