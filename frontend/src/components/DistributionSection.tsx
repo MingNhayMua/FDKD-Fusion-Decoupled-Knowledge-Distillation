@@ -6,10 +6,15 @@ import { Thermometer } from "lucide-react";
 import { useStore } from "@/hooks/useStore";
 import { recomputeDistribution } from "@/services/api";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Legend,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 
-const COLORS = { teacher: "#6366f1", assistant: "#8b5cf6", student: "#10b981" };
+const COLORS: Record<string, string> = {
+  teacher: "#6366f1", dkd: "#8b5cf6", takd: "#f59e0b", baseline: "#10b981",
+};
+const LABELS: Record<string, string> = {
+  teacher: "Teacher", dkd: "DKD", takd: "TAKD", baseline: "Baseline",
+};
 
 export default function DistributionSection() {
   const {
@@ -22,16 +27,13 @@ export default function DistributionSection() {
     async (newTemp: number) => {
       setTemperature(newTemp);
       if (!apiUrl || !imageFile) return;
-
       setUpdating(true);
       try {
         const result = await recomputeDistribution(apiUrl, imageFile, newTemp);
         setInferenceResult({
           ...inferenceResult!,
           temperature: newTemp,
-          teacher: { ...inferenceResult!.teacher, ...result.teacher },
-          assistant: { ...inferenceResult!.assistant, ...result.assistant },
-          student: { ...inferenceResult!.student, ...result.student },
+          models: { ...inferenceResult!.models, ...result.models },
           dkd: result.dkd,
           metrics: result.metrics,
         });
@@ -46,17 +48,21 @@ export default function DistributionSection() {
 
   if (!inferenceResult) return null;
 
-  // Build combined distribution data (top 15 by teacher)
-  const teacherTopK = inferenceResult.teacher.topk.slice(0, 15);
-  const chartData = teacherTopK.map((t) => {
-    const aMatch = inferenceResult.assistant.topk.find((a) => a.class_id === t.class_id);
-    const sMatch = inferenceResult.student.topk.find((s) => s.class_id === t.class_id);
-    return {
-      name: t.class.length > 12 ? t.class.slice(0, 11) + "…" : t.class,
-      Teacher: +(t.prob * 100).toFixed(2),
-      Assistant: aMatch ? +(aMatch.prob * 100).toFixed(2) : 0,
-      Student: sMatch ? +(sMatch.prob * 100).toFixed(2) : 0,
+  const modelKeys = Object.keys(inferenceResult.models);
+  const teacherData = inferenceResult.models.teacher?.topk?.slice(0, 15);
+  if (!teacherData) return null;
+
+  const chartData = teacherData.map((t) => {
+    const row: Record<string, string | number> = {
+      name: t.class.length > 12 ? t.class.slice(0, 11) + "\u2026" : t.class,
     };
+    for (const key of modelKeys) {
+      const match = inferenceResult.models[key]?.topk?.find(
+        (m) => m.class_id === t.class_id
+      );
+      row[LABELS[key] || key] = match ? +(match.prob * 100).toFixed(2) : 0;
+    }
+    return row;
   });
 
   return (
@@ -65,10 +71,9 @@ export default function DistributionSection() {
         Probability Distributions
       </h2>
       <p className="text-sm text-slate-500 text-center mb-6">
-        How the teacher&apos;s probability structure transfers progressively
+        How probability structure varies across models
       </p>
 
-      {/* Temperature Slider */}
       <motion.div
         className="glass-card p-5 max-w-lg mx-auto mb-8"
         initial={{ opacity: 0 }}
@@ -82,10 +87,7 @@ export default function DistributionSection() {
           </span>
         </div>
         <input
-          type="range"
-          min="0.5"
-          max="20"
-          step="0.5"
+          type="range" min="0.5" max="20" step="0.5"
           value={temperature}
           onChange={(e) => handleTempChange(parseFloat(e.target.value))}
           className="w-full accent-orange-400 h-2 bg-white/10 rounded-lg cursor-pointer"
@@ -95,14 +97,13 @@ export default function DistributionSection() {
           <span>Soft (T=20)</span>
         </div>
         <p className="text-xs text-slate-500 mt-2">
-          p = softmax(z / T) — Higher T reveals more dark knowledge
+          p = softmax(z / T) &mdash; Higher T reveals more dark knowledge
         </p>
         {updating && (
           <p className="text-xs text-indigo-400 mt-1 animate-pulse">Recomputing...</p>
         )}
       </motion.div>
 
-      {/* Combined Distribution Chart */}
       <motion.div
         className="glass-card p-6"
         initial={{ opacity: 0, y: 20 }}
@@ -112,30 +113,26 @@ export default function DistributionSection() {
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} layout="vertical" margin={{ left: 10, right: 30 }}>
               <XAxis
-                type="number"
-                domain={[0, "auto"]}
+                type="number" domain={[0, "auto"]}
                 tick={{ fontSize: 11, fill: "#94a3b8" }}
                 tickFormatter={(v) => `${v}%`}
               />
-              <YAxis
-                type="category"
-                dataKey="name"
-                width={100}
-                tick={{ fontSize: 11, fill: "#94a3b8" }}
-              />
+              <YAxis type="category" dataKey="name" width={100}
+                tick={{ fontSize: 11, fill: "#94a3b8" }} />
               <Tooltip
-                contentStyle={{
-                  background: "#1e1b4b",
-                  border: "1px solid #312e81",
-                  borderRadius: 8,
-                  fontSize: 12,
-                }}
+                contentStyle={{ background: "#1e1b4b", border: "1px solid #312e81", borderRadius: 8, fontSize: 12 }}
                 formatter={(v) => [`${v}%`]}
               />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="Teacher" fill={COLORS.teacher} radius={[0, 3, 3, 0]} maxBarSize={14} />
-              <Bar dataKey="Assistant" fill={COLORS.assistant} radius={[0, 3, 3, 0]} maxBarSize={14} />
-              <Bar dataKey="Student" fill={COLORS.student} radius={[0, 3, 3, 0]} maxBarSize={14} />
+              {modelKeys.map((key) => (
+                <Bar
+                  key={key}
+                  dataKey={LABELS[key] || key}
+                  fill={COLORS[key] || "#94a3b8"}
+                  radius={[0, 3, 3, 0]}
+                  maxBarSize={14}
+                />
+              ))}
             </BarChart>
           </ResponsiveContainer>
         </div>

@@ -20,12 +20,8 @@ export interface ModelPrediction {
 export interface TCKDData {
   target_class: string;
   target_class_id: number;
-  teacher_confidence: number;
-  assistant_confidence: number;
-  student_confidence: number;
-  ta_alignment: number;
-  as_alignment: number;
-  ts_alignment: number;
+  confidences: Record<string, number>;
+  [key: string]: unknown; // alignment keys like teacher_dkd_alignment
 }
 
 export interface NCKDRanking {
@@ -35,21 +31,11 @@ export interface NCKDRanking {
 }
 
 export interface NCKDData {
-  teacher_ranking: NCKDRanking[];
-  assistant_ranking: NCKDRanking[];
-  student_ranking: NCKDRanking[];
-  kl_ta: number;
-  kl_as: number;
-  kl_ts: number;
-  rank_correlation_ta: number;
-  rank_correlation_as: number;
-  rank_correlation_ts: number;
+  [key: string]: unknown; // {role}_ranking, kl_{a}_{b}, rank_correlation_{a}_{b}
 }
 
 export interface DarkKnowledgeData {
-  teacher_top_non_target: NCKDRanking[];
-  student_top_non_target: NCKDRanking[];
-  explanation: string;
+  [key: string]: unknown; // {role}_top_non_target, explanation
 }
 
 export interface DKDData {
@@ -59,24 +45,14 @@ export interface DKDData {
 }
 
 export interface MetricsData {
-  kl_teacher_student: number;
-  kl_teacher_assistant: number;
-  kl_assistant_student: number;
-  cosine_teacher_student: number;
-  cosine_teacher_assistant: number;
-  cosine_assistant_student: number;
-  entropy_teacher: number;
-  entropy_assistant: number;
-  entropy_student: number;
+  [key: string]: number; // entropy_{role}, kl_{a}_{b}, cosine_{a}_{b}
 }
 
 export interface InferenceResponse {
   image_id: string;
   image_base64: string;
   temperature: number;
-  teacher: ModelPrediction;
-  assistant: ModelPrediction;
-  student: ModelPrediction;
+  models: Record<string, ModelPrediction>;
   dkd: DKDData;
   metrics: MetricsData;
 }

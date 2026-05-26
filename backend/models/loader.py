@@ -22,9 +22,10 @@ MODELS: dict = {}
 
 # Traced model filenames
 TRACED_FILES = {
-    "teacher":   "teacher_traced.pt",
-    "assistant": "assistant_traced.pt",
-    "student":   "student_traced.pt",
+    "teacher":  "teacher_traced.pt",
+    "dkd":      "dkd_traced.pt",
+    "takd":     "takd_traced.pt",
+    "baseline": "baseline_traced.pt",
 }
 
 

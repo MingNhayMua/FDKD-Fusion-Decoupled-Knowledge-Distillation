@@ -8,20 +8,25 @@ import {
 
 interface Props { data: NCKDData; }
 
-const COLORS = { teacher: "#6366f1", assistant: "#8b5cf6", student: "#10b981" };
+const COLORS: Record<string, string> = {
+  teacher: "#6366f1", dkd: "#8b5cf6", takd: "#f59e0b", baseline: "#10b981",
+};
+const LABELS: Record<string, string> = {
+  teacher: "Teacher", dkd: "DKD", takd: "TAKD", baseline: "Baseline",
+};
 
 function RankingChart({ title, ranking, color }: {
   title: string; ranking: { class: string; prob: number }[]; color: string;
 }) {
   const chartData = ranking.slice(0, 8).map((r) => ({
-    name: r.class.length > 14 ? r.class.slice(0, 13) + "…" : r.class,
+    name: r.class.length > 14 ? r.class.slice(0, 13) + "\u2026" : r.class,
     prob: +(r.prob * 100).toFixed(2),
   }));
 
   return (
     <div>
       <h4 className="text-sm font-semibold mb-2" style={{ color }}>{title}</h4>
-      <div className="h-[240px]">
+      <div className="h-[200px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 10 }}>
             <XAxis type="number" hide />
@@ -46,9 +51,9 @@ function MetricBadge({ label, value, unit, color }: {
   label: string; value: number; unit: string; color: string;
 }) {
   return (
-    <div className="bg-white/5 rounded-xl p-4 text-center">
+    <div className="bg-white/5 rounded-xl p-3 text-center">
       <div className="text-xs text-slate-500 mb-1">{label}</div>
-      <div className="text-xl font-mono font-bold" style={{ color }}>
+      <div className="text-lg font-mono font-bold" style={{ color }}>
         {value.toFixed(4)}
       </div>
       <div className="text-[10px] text-slate-600">{unit}</div>
@@ -57,36 +62,64 @@ function MetricBadge({ label, value, unit, color }: {
 }
 
 export default function NCKDPanel({ data }: Props) {
+  // Find ranking keys
+  const rankingKeys = Object.keys(data).filter(k => k.endsWith("_ranking"));
+  const roles = rankingKeys.map(k => k.replace("_ranking", ""));
+
+  // Collect KL and correlation pairs
+  const klPairs: { label: string; value: number; roleKey: string }[] = [];
+  const corrPairs: { label: string; value: number; roleKey: string }[] = [];
+  for (let i = 0; i < roles.length; i++) {
+    for (let j = i + 1; j < roles.length; j++) {
+      const a = roles[i], b = roles[j];
+      const klKey = `kl_${a}_${b}`;
+      const corrKey = `rank_correlation_${a}_${b}`;
+      if (typeof data[klKey] === "number") {
+        klPairs.push({ label: `${LABELS[a] || a}\u2192${LABELS[b] || b}`, value: data[klKey] as number, roleKey: b });
+      }
+      if (typeof data[corrKey] === "number") {
+        corrPairs.push({ label: `${LABELS[a] || a}\u2194${LABELS[b] || b}`, value: data[corrKey] as number, roleKey: b });
+      }
+    }
+  }
+
+  const gridCols = roles.length <= 3 ? "md:grid-cols-3" : roles.length === 4 ? "md:grid-cols-4" : "md:grid-cols-2";
+
   return (
     <div className="glass-card p-8">
       <h3 className="text-lg font-bold mb-1">Non-Target Class Knowledge Distillation</h3>
       <p className="text-sm text-slate-500 mb-6">
-        Does the student preserve the teacher&apos;s ranking among non-target classes?
+        Does each model preserve the teacher&apos;s ranking among non-target classes?
       </p>
 
-      {/* Side-by-side Rankings */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <RankingChart title="Teacher Ranking" ranking={data.teacher_ranking} color={COLORS.teacher} />
-        <RankingChart title="Assistant Ranking" ranking={data.assistant_ranking} color={COLORS.assistant} />
-        <RankingChart title="Student Ranking" ranking={data.student_ranking} color={COLORS.student} />
+      <div className={`grid grid-cols-1 ${gridCols} gap-4 mb-8`}>
+        {rankingKeys.map((k) => {
+          const role = k.replace("_ranking", "");
+          return (
+            <RankingChart
+              key={k}
+              title={`${LABELS[role] || role} Ranking`}
+              ranking={data[k] as { class: string; prob: number }[]}
+              color={COLORS[role] || "#94a3b8"}
+            />
+          );
+        })}
       </div>
 
-      {/* Metrics */}
       <h4 className="text-sm font-semibold text-slate-300 mb-3">Ranking Preservation Metrics</h4>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <MetricBadge label="KL Div (T→A)" value={data.kl_ta} unit="nats" color="#8b5cf6" />
-        <MetricBadge label="KL Div (A→S)" value={data.kl_as} unit="nats" color="#10b981" />
-        <MetricBadge label="KL Div (T→S)" value={data.kl_ts} unit="nats" color="#06b6d4" />
-        <MetricBadge label="Kendall τ (T↔A)" value={data.rank_correlation_ta} unit="correlation" color="#8b5cf6" />
-        <MetricBadge label="Kendall τ (A↔S)" value={data.rank_correlation_as} unit="correlation" color="#10b981" />
-        <MetricBadge label="Kendall τ (T↔S)" value={data.rank_correlation_ts} unit="correlation" color="#06b6d4" />
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+        {klPairs.map((p) => (
+          <MetricBadge key={`kl_${p.label}`} label={`KL (${p.label})`} value={p.value} unit="nats" color={COLORS[p.roleKey] || "#94a3b8"} />
+        ))}
+        {corrPairs.map((p) => (
+          <MetricBadge key={`corr_${p.label}`} label={`\u03C4 (${p.label})`} value={p.value} unit="correlation" color={COLORS[p.roleKey] || "#94a3b8"} />
+        ))}
       </div>
 
       <div className="mt-6 p-4 bg-violet-500/5 rounded-xl text-xs text-slate-400 leading-relaxed">
         <strong className="text-violet-400">NCKD Insight:</strong> The non-target class distribution
-        encodes semantic similarity (e.g., &quot;tiger cat&quot; and &quot;Persian cat&quot; having nearby probabilities).
-        FDKD preserves this structure better through staged transfer, as shown by lower KL divergence
-        and higher rank correlation.
+        encodes semantic similarity. FDKD preserves this structure better through staged transfer,
+        as shown by lower KL divergence and higher rank correlation.
       </div>
     </div>
   );

@@ -137,8 +137,8 @@ def export_teacher(checkpoint_dir, output_dir):
 
 
 def export_resnet(checkpoint_dir, output_dir, depth, role, dirs):
-    """Export ResNet model (assistant or student)."""
-    label = f"{'Assistant' if role == 'assistant' else 'Student'} (ResNet-{depth})"
+    """Export ResNet model."""
+    label = f"{role.upper()} (ResNet-{depth})"
     print(f"\n{'=' * 60}")
     print(f"Exporting {label}")
     print("=" * 60)
@@ -216,7 +216,7 @@ def export_resnet(checkpoint_dir, output_dir, depth, role, dirs):
         diff = (out - out2).abs().max().item()
         print(f"  Post-trace diff: {diff:.8f}")
 
-    filename = f"{'assistant' if role == 'assistant' else 'student'}_traced.pt"
+    filename = f"{role}_traced.pt"
     out_path = os.path.join(output_dir, filename)
     torch.jit.save(traced, out_path)
     size_mb = os.path.getsize(out_path) / (1024 * 1024)
@@ -239,14 +239,16 @@ def main():
     print(f"Checkpoint dir: {args.checkpoint_dir}")
     print(f"Output dir:     {output_dir}")
 
-    from utils.config import TEACHER_DIRS, ASSISTANT_DIRS, STUDENT_DIRS
+    from utils.config import TEACHER_DIRS, DKD_DIRS, TAKD_DIRS, BASELINE_DIRS
 
     results = {}
     results['teacher'] = export_teacher(args.checkpoint_dir, output_dir)
-    results['assistant'] = export_resnet(
-        args.checkpoint_dir, output_dir, 18, 'assistant', ASSISTANT_DIRS)
-    results['student'] = export_resnet(
-        args.checkpoint_dir, output_dir, 18, 'student', STUDENT_DIRS)
+    results['dkd'] = export_resnet(
+        args.checkpoint_dir, output_dir, 18, 'dkd', DKD_DIRS)
+    results['takd'] = export_resnet(
+        args.checkpoint_dir, output_dir, 18, 'takd', TAKD_DIRS)
+    results['baseline'] = export_resnet(
+        args.checkpoint_dir, output_dir, 18, 'baseline', BASELINE_DIRS)
 
     print(f"\n{'=' * 60}")
     print("EXPORT SUMMARY")

@@ -4,6 +4,13 @@ import { motion } from "framer-motion";
 import { useStore } from "@/hooks/useStore";
 import { TrendingDown, GitCompare, Activity } from "lucide-react";
 
+const COLORS: Record<string, string> = {
+  teacher: "#6366f1", dkd: "#8b5cf6", takd: "#f59e0b", baseline: "#10b981",
+};
+const LABELS: Record<string, string> = {
+  teacher: "Teacher", dkd: "DKD", takd: "TAKD", baseline: "Baseline",
+};
+
 interface MetricCardProps {
   icon: React.ReactNode;
   title: string;
@@ -56,11 +63,42 @@ function MetricCard({ icon, title, items, insight, delay }: MetricCardProps) {
   );
 }
 
+function getPairs(modelKeys: string[]) {
+  const pairs: [string, string][] = [];
+  for (let i = 0; i < modelKeys.length; i++) {
+    for (let j = i + 1; j < modelKeys.length; j++) {
+      pairs.push([modelKeys[i], modelKeys[j]]);
+    }
+  }
+  return pairs;
+}
+
 export default function MetricsCards() {
   const { inferenceResult } = useStore();
   if (!inferenceResult?.metrics) return null;
 
+  const modelKeys = Object.keys(inferenceResult.models);
+  const pairs = getPairs(modelKeys);
   const m = inferenceResult.metrics;
+
+  const klItems = pairs.map(([a, b]) => ({
+    label: `${LABELS[a] || a} \u2192 ${LABELS[b] || b}`,
+    value: (m[`kl_${a}_${b}`] ?? m[`kl_${b}_${a}`]) as number,
+    color: COLORS[b] || "#94a3b8",
+  }));
+
+  const cosItems = pairs.map(([a, b]) => ({
+    label: `${LABELS[a] || a} \u2194 ${LABELS[b] || b}`,
+    value: (m[`cosine_${a}_${b}`] ?? m[`cosine_${b}_${a}`]) as number,
+    color: COLORS[b] || "#94a3b8",
+    format: "pct",
+  }));
+
+  const entropyItems = modelKeys.map((key) => ({
+    label: LABELS[key] || key,
+    value: m[`entropy_${key}`] as number,
+    color: COLORS[key] || "#94a3b8",
+  }));
 
   return (
     <section className="section-container">
@@ -73,36 +111,22 @@ export default function MetricsCards() {
         <MetricCard
           icon={<TrendingDown className="w-5 h-5 text-rose-400" />}
           title="KL Divergence"
-          items={[
-            { label: "T → A", value: m.kl_teacher_assistant, color: "#8b5cf6" },
-            { label: "A → S", value: m.kl_assistant_student, color: "#10b981" },
-            { label: "T → S (direct)", value: m.kl_teacher_student, color: "#06b6d4" },
-          ]}
-          insight="Lower KL divergence indicates better distribution matching. FDKD reduces the gap by staging transfer through the assistant."
+          items={klItems}
+          insight="Lower KL divergence = better distribution matching across progressive stages."
           delay={0}
         />
-
         <MetricCard
           icon={<GitCompare className="w-5 h-5 text-blue-400" />}
           title="Cosine Similarity"
-          items={[
-            { label: "T ↔ A", value: m.cosine_teacher_assistant, color: "#8b5cf6", format: "pct" },
-            { label: "A ↔ S", value: m.cosine_assistant_student, color: "#10b981", format: "pct" },
-            { label: "T ↔ S", value: m.cosine_teacher_student, color: "#06b6d4", format: "pct" },
-          ]}
-          insight="Higher cosine similarity means the student's probability distribution is better aligned with the teacher's."
+          items={cosItems}
+          insight="Higher cosine similarity means probability distributions are better aligned."
           delay={0.15}
         />
-
         <MetricCard
           icon={<Activity className="w-5 h-5 text-amber-400" />}
           title="Distribution Entropy"
-          items={[
-            { label: "Teacher", value: m.entropy_teacher, color: "#6366f1" },
-            { label: "Assistant", value: m.entropy_assistant, color: "#8b5cf6" },
-            { label: "Student", value: m.entropy_student, color: "#10b981" },
-          ]}
-          insight="Lower entropy = sharper, more confident predictions. The student's entropy should be close to the teacher's after successful distillation."
+          items={entropyItems}
+          insight="Lower entropy = sharper predictions. KD should preserve teacher's entropy level."
           delay={0.3}
         />
       </div>

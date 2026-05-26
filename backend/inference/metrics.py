@@ -7,21 +7,21 @@ from utils.math_utils import kl_divergence, cosine_similarity, entropy
 
 
 def compute_metrics(logits_dict: dict, temperature: float = 1.0) -> dict:
-    """Compute distribution-level metrics across all model pairs."""
+    """Compute distribution-level metrics across all models."""
     if not all(k in logits_dict for k in MODEL_ROLES):
         return {"error": "Not all models available"}
 
     probs = logits_to_probs(logits_dict, temperature)
-    t, a, s = probs["teacher"], probs["assistant"], probs["student"]
 
-    return {
-        "kl_teacher_student": kl_divergence(t, s),
-        "kl_teacher_assistant": kl_divergence(t, a),
-        "kl_assistant_student": kl_divergence(a, s),
-        "cosine_teacher_student": cosine_similarity(t, s),
-        "cosine_teacher_assistant": cosine_similarity(t, a),
-        "cosine_assistant_student": cosine_similarity(a, s),
-        "entropy_teacher": entropy(t),
-        "entropy_assistant": entropy(a),
-        "entropy_student": entropy(s),
-    }
+    result = {}
+    # Entropy per model
+    for key in MODEL_ROLES:
+        result[f"entropy_{key}"] = entropy(probs[key])
+
+    # Pairwise KL & cosine
+    for i, k1 in enumerate(MODEL_ROLES):
+        for k2 in MODEL_ROLES[i + 1:]:
+            result[f"kl_{k1}_{k2}"] = kl_divergence(probs[k1], probs[k2])
+            result[f"cosine_{k1}_{k2}"] = cosine_similarity(probs[k1], probs[k2])
+
+    return result

@@ -40,11 +40,13 @@ app.add_middleware(
 @app.get("/api/health")
 async def health():
     """Server health check and model status."""
-    from utils.config import DEVICE, NUM_CLASSES
+    from utils.config import DEVICE, NUM_CLASSES, MODEL_ROLES, MODEL_INFO
     return {
         "status": "ok",
         "device": str(DEVICE),
         "models": {k: v is not None for k, v in MODELS.items()},
+        "model_roles": MODEL_ROLES,
+        "model_info": MODEL_INFO,
         "num_classes": NUM_CLASSES,
     }
 
@@ -67,9 +69,7 @@ async def inference(
         "image_id": str(uuid.uuid4()),
         "image_base64": img_b64,
         "temperature": temperature,
-        "teacher": preds.get("teacher", {}),
-        "assistant": preds.get("assistant", {}),
-        "student": preds.get("student", {}),
+        "models": preds,
         "dkd": dkd,
         "metrics": metrics,
     })
@@ -90,9 +90,7 @@ async def recompute_distribution(
 
     return JSONResponse({
         "temperature": temperature,
-        "teacher": preds.get("teacher", {}),
-        "assistant": preds.get("assistant", {}),
-        "student": preds.get("student", {}),
+        "models": preds,
         "dkd": dkd,
         "metrics": metrics,
     })

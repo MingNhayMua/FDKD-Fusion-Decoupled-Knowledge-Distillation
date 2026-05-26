@@ -6,33 +6,35 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 
-const MODEL_CONFIG = {
-  teacher: { label: "Teacher", sub: "Swin-B · 86.95M", color: "#6366f1", glow: "glow-teacher" },
-  assistant: { label: "Assistant", sub: "ResNet-152 · 58.55M", color: "#8b5cf6", glow: "glow-assistant" },
-  student: { label: "Student", sub: "ResNet-18 · 11.28M", color: "#10b981", glow: "glow-student" },
+const MODEL_LABELS: Record<string, { label: string; sub: string; color: string }> = {
+  teacher:  { label: "Teacher", sub: "Swin-B · 86.95M", color: "#6366f1" },
+  dkd:      { label: "DKD (Direct)", sub: "ResNet-18 · 11.28M", color: "#8b5cf6" },
+  takd:     { label: "TAKD", sub: "ResNet-18 · 11.28M", color: "#f59e0b" },
+  baseline: { label: "Baseline", sub: "ResNet-18 · 11.28M", color: "#10b981" },
 };
 
 export default function ModelComparison() {
   const { inferenceResult } = useStore();
   if (!inferenceResult) return null;
 
-  const models = ["teacher", "assistant", "student"] as const;
+  const modelKeys = Object.keys(inferenceResult.models);
+  const cols = modelKeys.length <= 3 ? "md:grid-cols-3" : "md:grid-cols-4";
 
   return (
     <section className="section-container">
       <h2 className="text-2xl font-bold text-center mb-2">Model Predictions</h2>
       <p className="text-sm text-slate-500 text-center mb-8">
-        Progressive knowledge transfer: Teacher → Assistant → Student
+        Teacher → Direct DKD → TAKD → Baseline
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {models.map((key, i) => {
-          const data = inferenceResult[key];
-          const cfg = MODEL_CONFIG[key];
+      <div className={`grid grid-cols-1 ${cols} gap-6`}>
+        {modelKeys.map((key, i) => {
+          const data = inferenceResult.models[key];
+          const cfg = MODEL_LABELS[key] || { label: key, sub: "", color: "#94a3b8" };
           if (!data || data.error) return null;
 
           const chartData = data.topk.slice(0, 5).map((p) => ({
-            name: p.class.length > 15 ? p.class.slice(0, 14) + "…" : p.class,
+            name: p.class.length > 15 ? p.class.slice(0, 14) + "\u2026" : p.class,
             prob: +(p.prob * 100).toFixed(1),
           }));
 
@@ -45,7 +47,6 @@ export default function ModelComparison() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.15 }}
             >
-              {/* Header */}
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-3 h-3 rounded-full" style={{ background: cfg.color }} />
                 <div>
@@ -54,7 +55,6 @@ export default function ModelComparison() {
                 </div>
               </div>
 
-              {/* Prediction */}
               <div className="mb-4">
                 <div className="text-xs text-slate-500 mb-1">Top Prediction</div>
                 <div className="text-lg font-bold">{data.predicted_class}</div>
@@ -74,15 +74,12 @@ export default function ModelComparison() {
                 </div>
               </div>
 
-              {/* Top-5 Chart */}
               <div className="h-[160px] mt-2">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 10 }}>
                     <XAxis type="number" domain={[0, 100]} hide />
                     <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={90}
+                      type="category" dataKey="name" width={90}
                       tick={{ fontSize: 10, fill: "#94a3b8" }}
                     />
                     <Tooltip
@@ -98,7 +95,6 @@ export default function ModelComparison() {
                 </ResponsiveContainer>
               </div>
 
-              {/* Stats */}
               <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
                 <div className="bg-white/5 rounded-lg p-2">
                   <div className="text-slate-500">Entropy</div>

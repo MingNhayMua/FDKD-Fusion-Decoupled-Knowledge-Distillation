@@ -5,6 +5,13 @@ import type { TCKDData } from "@/types/inference";
 
 interface Props { data: TCKDData; }
 
+const COLORS: Record<string, string> = {
+  teacher: "#6366f1", dkd: "#8b5cf6", takd: "#f59e0b", baseline: "#10b981",
+};
+const LABELS: Record<string, string> = {
+  teacher: "Teacher", dkd: "DKD", takd: "TAKD", baseline: "Baseline",
+};
+
 function ConfidenceGauge({ label, value, color, delay }: {
   label: string; value: number; color: string; delay: number;
 }) {
@@ -14,7 +21,7 @@ function ConfidenceGauge({ label, value, color, delay }: {
 
   return (
     <div className="flex flex-col items-center">
-      <div className="relative w-28 h-28">
+      <div className="relative w-24 h-24">
         <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
           <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="8" />
           <motion.circle
@@ -27,39 +34,36 @@ function ConfidenceGauge({ label, value, color, delay }: {
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-lg font-mono font-bold" style={{ color }}>
+          <span className="text-base font-mono font-bold" style={{ color }}>
             {pct.toFixed(1)}%
           </span>
         </div>
       </div>
-      <span className="text-sm font-medium mt-2" style={{ color }}>{label}</span>
-    </div>
-  );
-}
-
-function AlignmentBar({ label, value, color }: {
-  label: string; value: number; color: string;
-}) {
-  return (
-    <div className="mb-3">
-      <div className="flex justify-between text-xs mb-1">
-        <span className="text-slate-400">{label}</span>
-        <span className="font-mono" style={{ color }}>{(value * 100).toFixed(1)}%</span>
-      </div>
-      <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-        <motion.div
-          className="h-full rounded-full"
-          style={{ background: color }}
-          initial={{ width: 0 }}
-          animate={{ width: `${value * 100}%` }}
-          transition={{ duration: 1 }}
-        />
-      </div>
+      <span className="text-xs font-medium mt-1" style={{ color }}>{label}</span>
     </div>
   );
 }
 
 export default function TCKDPanel({ data }: Props) {
+  const roleKeys = Object.keys(data.confidences);
+
+  // Collect alignment pairs
+  const alignPairs: { key: string; label: string; value: number; color: string }[] = [];
+  for (let i = 0; i < roleKeys.length; i++) {
+    for (let j = i + 1; j < roleKeys.length; j++) {
+      const a = roleKeys[i], b = roleKeys[j];
+      const valKey = `${a}_${b}_alignment`;
+      if (typeof data[valKey] === "number") {
+        alignPairs.push({
+          key: valKey,
+          label: `${LABELS[a] || a} \u2192 ${LABELS[b] || b}`,
+          value: data[valKey] as number,
+          color: COLORS[b] || "#94a3b8",
+        });
+      }
+    }
+  }
+
   return (
     <div className="glass-card p-8">
       <h3 className="text-lg font-bold mb-1">Target Class Knowledge Distillation</h3>
@@ -68,26 +72,46 @@ export default function TCKDPanel({ data }: Props) {
       </p>
 
       {/* Confidence Gauges */}
-      <div className="flex justify-center gap-12 mb-8">
-        <ConfidenceGauge label="Teacher" value={data.teacher_confidence} color="#6366f1" delay={0} />
-        <div className="flex items-center text-slate-600 text-2xl">→</div>
-        <ConfidenceGauge label="Assistant" value={data.assistant_confidence} color="#8b5cf6" delay={0.2} />
-        <div className="flex items-center text-slate-600 text-2xl">→</div>
-        <ConfidenceGauge label="Student" value={data.student_confidence} color="#10b981" delay={0.4} />
+      <div className="flex flex-wrap justify-center gap-6 mb-8">
+        {roleKeys.map((key, i) => (
+          <ConfidenceGauge
+            key={key}
+            label={LABELS[key] || key}
+            value={data.confidences[key]}
+            color={COLORS[key] || "#94a3b8"}
+            delay={i * 0.15}
+          />
+        ))}
       </div>
 
       {/* Alignment Bars */}
       <div className="max-w-md mx-auto">
         <h4 className="text-sm font-semibold text-slate-300 mb-3">Confidence Alignment</h4>
-        <AlignmentBar label="Teacher → Assistant" value={data.ta_alignment} color="#8b5cf6" />
-        <AlignmentBar label="Assistant → Student" value={data.as_alignment} color="#10b981" />
-        <AlignmentBar label="Teacher → Student (direct)" value={data.ts_alignment} color="#06b6d4" />
+        {alignPairs.map((pair) => (
+          <div className="mb-3" key={pair.key}>
+            <div className="flex justify-between text-xs mb-1">
+              <span className="text-slate-400">{pair.label}</span>
+              <span className="font-mono" style={{ color: pair.color }}>
+                {(pair.value * 100).toFixed(1)}%
+              </span>
+            </div>
+            <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+              <motion.div
+                className="h-full rounded-full"
+                style={{ background: pair.color }}
+                initial={{ width: 0 }}
+                animate={{ width: `${pair.value * 100}%` }}
+                transition={{ duration: 1 }}
+              />
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="mt-6 p-4 bg-indigo-500/5 rounded-xl text-xs text-slate-400 leading-relaxed">
-        <strong className="text-indigo-400">TCKD Insight:</strong> Progressive transfer through the assistant
-        preserves the teacher&apos;s confidence more effectively than direct T→S transfer,
-        reducing the capacity gap at each stage.
+        <strong className="text-indigo-400">TCKD Insight:</strong> Progressive knowledge transfer
+        through intermediate models helps preserve the teacher&apos;s confidence better than
+        direct transfer, reducing the capacity gap at each stage.
       </div>
     </div>
   );
