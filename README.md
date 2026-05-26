@@ -1,6 +1,6 @@
 # FDKD: Fusion Decoupled Knowledge Distillation for Progressive Knowledge Transfer
 
-Authors: Quang-Minh Tran†, Viet-Hoang Nguyen† and Vinh-Tiep Nguyen.
+Authors: Quang-Minh Tran and Viet-Hoang Nguyen.
 
 > **Abstract:** Knowledge distillation is a standard approach for model compression, but its effectiveness degrades under large teacher–student capacity gaps, resulting in optimization instability or collapse and poor feature alignment. While **Decoupled Knowledge Distillation (DKD)** improves supervision by separating target and non-target components, it does not address capacity mismatch. **Teacher Assistant Knowledge Distillation (TAKD)** alleviates this gap via intermediate models but relies on conventional objectives that entangle signals and propagate noisy logit distributions, limiting training stability under heterogeneous settings. To address this, we propose **Fusion Decoupled Knowledge Distillation (FDKD)**, a unified framework that integrates TAKD with stage-wise decoupled supervision to enable progressive knowledge transfer. Unlike traditional multi-stage methods that rely on conventional KD objectives and propagate noisy logit distributions, FDKD exploits a decoupled objective across the teacher–assistant–student hierarchy, preserving both global category relationships and local sample-specific information as model capacity scales down. Extensive experiments on standard benchmarks demonstrate that the proposed FDKD achieves superior performance under large capacity gaps, **outperforming vanilla TAKD and standalone DKD by 7.53% and 12.58% in top-1 accuracy**, respectively.
 
@@ -8,7 +8,7 @@ Authors: Quang-Minh Tran†, Viet-Hoang Nguyen† and Vinh-Tiep Nguyen.
 
 ---
 
-## 📋 Overview
+## Overview
 
 FDKD combines **TAKD** (Teacher Assistant Knowledge Distillation) with **DKD** (Decoupled Knowledge Distillation) to enable progressive knowledge transfer across large capacity gaps:
 
@@ -17,19 +17,22 @@ Stage 1: Teacher (Swin-B, frozen) ──DKD──► Assistant (ResNet-152)
 Stage 2: Assistant (frozen)       ──DKD──► Student   (ResNet-18)
 ```
 
-This repository includes:
-- **Interactive Demo** — Conference-quality visualization frontend (Next.js)
-- **Inference Backend** — FastAPI server with DKD decomposition, Grad-CAM, metrics
-- **Training** — MMPretrain/MMRazor configs (see `training/`)
+The interactive demo compares **4 models** side-by-side for visual analysis:
+- **Teacher** — Swin-B (86.95M), trained fully
+- **DKD (Direct)** — ResNet-18 (11.28M), distilled directly from Swin-B
+- **TAKD** — ResNet-18 (11.28M), FDKD result: Swin-B → ResNet-152 → ResNet-18
+- **Baseline** — ResNet-18 (11.28M), trained with hard labels (no KD)
 
 ---
 
-## 🏗 Project Structure
+## Project Structure
 
 ```
-├── run_colab.py                        ← Colab launcher (entry point)
+├── run_colab.py                        ← Colab launcher
+├── run_local.py                        ← Local launcher
+├── fdkd_colab.ipynb                    ← Colab notebook (Miniforge + conda)
 │
-├── utils/                              ← Shared modules (used by all)
+├── utils/                              ← Shared modules
 │   ├── config.py                       ← Global config (single source of truth)
 │   ├── distributions.py                ← Softmax, logits_to_probs, top-k
 │   ├── math_utils.py                   ← KL divergence, cosine, entropy, rank_corr
@@ -41,17 +44,18 @@ This repository includes:
 │   ├── main.py                         ← FastAPI app + API routes
 │   ├── requirements.txt
 │   ├── models/
-│   │   └── loader.py                   ← Model loading + checkpoint finder
+│   │   ├── loader.py                   ← Traced model loading
+│   │   └── swin_pure.py                ← Pure PyTorch Swin-B implementation
 │   ├── inference/
-│   │   ├── pipeline.py                 ← T → A → S inference
+│   │   ├── pipeline.py                 ← Multi-model inference
 │   │   ├── dkd.py                      ← TCKD / NCKD decomposition
 │   │   └── metrics.py                  ← Distribution-level metrics
 │   └── visualization/
-│       └── gradcam.py                  ← Grad-CAM heatmaps
+│       └── gradcam.py                  ← FC-weight GradCAM heatmaps
 │
 ├── frontend/                           ← Next.js interactive demo
 │   ├── src/app/                        ← Pages + global styles
-│   ├── src/components/                 ← UI components (10 components)
+│   ├── src/components/                 ← UI components
 │   ├── src/hooks/                      ← State management (Zustand)
 │   ├── src/services/                   ← API client (Axios)
 │   └── src/types/                      ← TypeScript definitions
@@ -59,8 +63,8 @@ This repository includes:
 ├── training/                           ← MMPretrain + MMRazor configs
 │   ├── README.md                       ← Training instructions
 │   └── configs/
-│       ├── _base_/                     ← Shared base configs
-│       ├── distill_dkd/                ← DKD distillation (FDKD Stage 1 & 2)
+│       ├── _base/                      ← Shared base configs
+│       ├── distill_dkd/                ← DKD distillation configs
 │       ├── distill_fitnets/            ← FitNets baseline
 │       ├── distill_crd/                ← CRD baseline
 │       ├── distill_kd/                 ← Vanilla KD baseline
@@ -71,30 +75,25 @@ This repository includes:
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Backend — Google Colab (T4 GPU)
 
-```python
-# Cell 1: Clone & install
+Open [`fdkd_colab.ipynb`](fdkd_colab.ipynb) in Colab and run all cells, or:
+
+```bash
 !git clone https://github.com/MingNhayMua/FDKD-Fusion-Decoupled-Knowledge-Distillation.git
 %cd FDKD-Fusion-Decoupled-Knowledge-Distillation
-!pip install -r backend/requirements.txt
 
-# Cell 2: Mount Google Drive
-from google.colab import drive
-drive.mount('/content/drive')
+# Install miniforge + conda env (see notebook for full setup)
+# Export models from checkpoints:
+!conda run -n openmmlab python export_models.py --checkpoint-dir "/content/drive/MyDrive/CS338-checkpoint"
 
-# Cell 3: Start server
-from run_colab import start_server
-
-start_server(
-    checkpoint_dir="/content/drive/MyDrive/checkpoints",
-    ngrok_token="YOUR_NGROK_AUTH_TOKEN"
-)
+# Start server:
+!conda run --no-capture-output -n openmmlab python run_colab.py --checkpoint-dir "/content/drive/MyDrive/CS338-checkpoint" --token "YOUR_TOKEN" --port 8000
 ```
 
-Copy the printed ngrok URL (e.g., `https://xxxx.ngrok-free.app`).
+Copy the printed ngrok URL.
 
 ### 2. Frontend — Local
 
@@ -114,50 +113,40 @@ npx vercel
 
 ---
 
-## 🔬 Architecture
+## Architecture
 
 ```
-Google Colab (T4 GPU)                    Vercel / localhost:3000
+Google Colab (T4 GPU)                    Frontend (Vercel / localhost:3000)
 ┌────────────────────────┐              ┌──────────────────────────┐
 │  FastAPI Backend        │   ngrok     │  Next.js Frontend         │
-│  ├── PyTorch inference  │◄──────────►│  ├── Model Comparison     │
-│  ├── DKD decomposition  │   HTTPS    │  ├── Distribution Charts  │
-│  ├── Grad-CAM           │            │  ├── DKD Analysis (TCKD/  │
-│  └── Metrics            │            │  │   NCKD/Dark Knowledge)  │
-│                         │            │  ├── Grad-CAM Viewer      │
-│  Google Drive mounted   │            │  └── Metrics Dashboard    │
-│  └── checkpoints/*.pth  │            │                           │
+│  ├── 4-model inference  │◄──────────►│  ├── Model Comparison     │
+│  ├── DKD decomposition  │   HTTPS    │  ├── GradCAM Heatmaps     │
+│  ├── GradCAM heatmaps   │            │  ├── Distribution Charts  │
+│  └── Pairwise metrics   │            │  └── DKD Analysis (TCKD/  │
+│                         │            │      NCKD/Dark Knowledge)  │
+│  Google Drive mounted   │            │                           │
+│  └── checkpoints/       │            │                           │
 └────────────────────────┘              └──────────────────────────┘
 ```
 
----
+## Demo Models
 
-## 📊 Checkpoint Mapping
+The demo loads 4 models from Google Drive checkpoints:
 
-The backend auto-detects checkpoint directories by name:
-
-| Directory | Model Role | Architecture |
+| File | Architecture | Role |
 |---|---|---|
-| `swinb_fully/` | Teacher | Swin-B (86.95M) |
-| `dkd_swinb_r152/` | Assistant (FDKD Stage 1) | ResNet-152 (58.55M) |
-| `dkd_r152_r18/` | Student (FDKD Stage 2) | ResNet-18 (11.28M) |
-| `r152_fully/` | Assistant (baseline) | ResNet-152 |
-| `r18_fully/` | Student (baseline) | ResNet-18 |
-| `dkd_swinb_r18/` | Student (direct DKD) | ResNet-18 |
-| `fitnets_swinb_r18/` | Student (FitNets) | ResNet-18 |
+| `swinb_fully.pth` | Swin-B (86.95M) | **Teacher** |
+| `swinb_r18_clean.pth` | ResNet-18 (11.28M) | **DKD (Direct)** — distilled from Swin-B |
+| `disilledr152_r18_clean.pth` | ResNet-18 (11.28M) | **TAKD** — FDKD result (Swin→R152→R18) |
+| `r18_fully.pth` | ResNet-18 (11.28M) | **Baseline** — hard labels, no KD |
+
+The backend auto-detects checkpoints by name (see `utils/config.py`).
+
+> **Download checkpoints:** [Google Drive](https://drive.google.com/drive/folders/1FOVw29_-ZqeAijI36_Gd_asOcbNqtdIR?usp=sharing)
 
 ---
 
-## 🏋️ Training
-
-Training uses **MMPretrain + MMRazor** framework. See [`training/README.md`](training/README.md) for:
-- Environment setup
-- Config files for each distillation method
-- Training commands
-
----
-
-## 📈 Results (Tiny ImageNet)
+## Results (Tiny ImageNet)
 
 | Method | Top-1 | Top-5 | Params |
 |---|---|---|---|
@@ -169,22 +158,21 @@ Training uses **MMPretrain + MMRazor** framework. See [`training/README.md`](tra
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 
-**Backend:** Python, FastAPI, PyTorch, timm, pytorch-grad-cam, scipy  
+**Backend:** Python, FastAPI, PyTorch, torchvision, scipy  
 **Frontend:** Next.js 14, TypeScript, TailwindCSS, Framer Motion, Recharts  
 **Training:** MMPretrain, MMRazor  
 **Deployment:** Google Colab (GPU), Vercel (frontend), ngrok (tunnel)
 
 ---
 
-## 📄 Citation
+## Citation
 
 ```bibtex
 @article{tran2025fdkd,
   title={Fusion Decoupled Knowledge Distillation: Knowledge Transfer via Decoupling Teaching Assistant},
-  author={Tran, Q.-M. and others},
-  journal={Pattern Recognition Letters},
+  author={Tran, Q.-M. and Nguyen, V.-H.},
   year={2025}
 }
 ```
