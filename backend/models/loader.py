@@ -30,23 +30,29 @@ TRACED_FILES = {
 
 def _load_traced(role: str, filename: str) -> torch.jit.ScriptModule | None:
     """Load a single traced model."""
+    import time
     path = os.path.join(CHECKPOINT_DIR, filename)
+    size_mb = os.path.getsize(path) / (1024 * 1024) if os.path.exists(path) else 0
+    
     if not os.path.exists(path):
         print(f"  [{role}] ❌ Not found: {path}")
         return None
 
+    print(f"  [{role}] Loading {filename} ({size_mb:.1f} MB) from Drive...", flush=True)
+    t0 = time.time()
+
     try:
         model = torch.jit.load(path, map_location=DEVICE)
+        print(f"  [{role}]    torch.jit.load done in {time.time()-t0:.0f}s", flush=True)
         model.eval()
 
-        size_mb = os.path.getsize(path) / (1024 * 1024)
-        print(f"  [{role}] ✅ Loaded {filename} ({size_mb:.1f} MB)")
-
         # Quick sanity check
+        print(f"  [{role}]    Running sanity check...", flush=True)
+        t1 = time.time()
         with torch.no_grad():
             dummy = torch.randn(1, 3, 224, 224, device=DEVICE)
             out = model(dummy)
-            print(f"  [{role}]    Output shape: {out.shape}")
+            print(f"  [{role}]    Done in {time.time()-t1:.0f}s, output shape: {out.shape}", flush=True)
 
         return model
     except Exception as e:

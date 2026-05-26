@@ -18,19 +18,27 @@ def start_server(
     labels_path: str = None,
 ):
     """Start the FDKD demo server on Colab with ngrok tunnel."""
+    import time
+    _t0 = time.time()
+    print(f"[{0:.0f}s] Starting FDKD server...")
+    
     import nest_asyncio
     import asyncio
     from pyngrok import ngrok
+    print(f"[{time.time()-_t0:.0f}s] pyngrok imported")
 
     import utils.config as cfg
     cfg.CHECKPOINT_DIR = checkpoint_dir
+    print(f"[{time.time()-_t0:.0f}s] Config loaded, checkpoint_dir={cfg.CHECKPOINT_DIR}")
 
     from utils.labels import load_labels
     lp = labels_path or os.path.join(checkpoint_dir, "tiny_imagenet_labels.json")
     load_labels(lp)
+    print(f"[{time.time()-_t0:.0f}s] Labels loaded")
 
     from backend.models.loader import load_all_models
     load_all_models()
+    print(f"[{time.time()-_t0:.0f}s] Models loaded")
 
     if ngrok_token:
         ngrok.set_auth_token(ngrok_token)
