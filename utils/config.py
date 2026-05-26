@@ -47,16 +47,11 @@ IS_COLAB = os.path.exists("/content") and os.path.isdir("/content")
 # they contain pre-extracted student weights without architecture.* prefix.
 TEACHER_DIRS = ["swinb_fully", "swinbase_fully"]
 ASSISTANT_DIRS = [
-    "dkd_swinb_r152_clean", "swinb_r152_clean",       # preprocessed (preferred)
-    "dkd_swinb_r152", "swinb_r152",                    # raw distillation
-    "r152_fully",                                       # standalone fallback
+    "swinb_r18_clean", "dkd_swinb_r18_clean",          # direct DKD from Swin-B
+    "swinb_r18", "dkd_swinb_r18",                       # raw distillation
 ]
 STUDENT_DIRS = [
-    "dkd_r152_r18_clean", "disilledr152_r18_clean",    # preprocessed (preferred)
-    "dkd_swinb_r18_clean", "swinb_r18_clean",
-    "dkd_r152_r18", "disilledr152_r18",                # raw distillation
-    "dkd_swinb_r18", "swinb_r18",
-    "r18_fully",                                        # standalone fallback
+    "r18_fully",                                        # fully trained baseline
 ]
 
 # Checkpoint file extensions to search for
@@ -69,9 +64,9 @@ IMAGENET_STD = [0.229, 0.224, 0.225]
 
 # Model metadata (shared by pipeline, metrics display, etc.)
 MODEL_INFO = {
-    "teacher":   {"name": "Swin-B",    "params": "86.95M", "gflops": "15,467"},
-    "assistant": {"name": "ResNet-152", "params": "58.55M", "gflops": "11,557"},
-    "student":   {"name": "ResNet-18",  "params": "11.28M", "gflops": "1,819"},
+    "teacher":   {"name": "Swin-B",        "params": "86.95M", "gflops": "15,467"},
+    "assistant": {"name": "ResNet-18 (DKD)","params": "11.28M", "gflops": "1,819"},
+    "student":   {"name": "ResNet-18 (Baseline)","params": "11.28M", "gflops": "1,819"},
 }
 
 MODEL_ROLES = ["teacher", "assistant", "student"]

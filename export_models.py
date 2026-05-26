@@ -244,7 +244,7 @@ def main():
     results = {}
     results['teacher'] = export_teacher(args.checkpoint_dir, output_dir)
     results['assistant'] = export_resnet(
-        args.checkpoint_dir, output_dir, 152, 'assistant', ASSISTANT_DIRS)
+        args.checkpoint_dir, output_dir, 18, 'assistant', ASSISTANT_DIRS)
     results['student'] = export_resnet(
         args.checkpoint_dir, output_dir, 18, 'student', STUDENT_DIRS)
 
