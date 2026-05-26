@@ -1,23 +1,131 @@
 """
-GradCAM-style saliency maps for all 4 FDKD models using traced models.
-
-Uses gradient-based approach with fallback to occlusion for robust operation.
+GradCAM-style visualization for FDKD models.
+- Teacher (Swin-B): Attention map from 7x7 spatial features × FC weights
+- ResNet-18 (DKD/TAKD/Baseline): Input gradient saliency
 """
 from __future__ import annotations
 
 import torch
-import torch.nn.functional as F
 import numpy as np
 
 from backend.models.loader import MODELS
-from utils.config import DEVICE, IMAGE_SIZE, MODEL_ROLES
+from backend.models.swin_pure import SwinBackbone
+from utils.config import DEVICE, IMAGE_SIZE, MODEL_ROLES, CHECKPOINT_DIR
+import torch.nn as nn
 
 
-def generate_gradcam(input_tensor: torch.Tensor, class_idx: int) -> dict:
-    """Generate heatmap for all 4 models.
+# ── Swin-B: FC-weight attention map ──────────────
 
-    Tries gradient-based first, falls back to occlusion if backward fails.
+def _swin_heatmap(input_tensor, class_idx):
     """
+    For Swin-B: get 7x7 spatial features from last stage,
+    weight by FC row for target class -> activation map.
+    No gradient needed, works with the pure-pytorch swin_pure model.
+    """
+    # Load SwinBackbone from raw checkpoint (same keys as before, proven to work)
+    import os
+    ckpt_path = _find_teacher_ckpt()
+    if ckpt_path is None:
+        return np.ones((IMAGE_SIZE, IMAGE_SIZE), dtype=np.float32) * 0.5
+
+    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    sd = ckpt.get("state_dict", ckpt)
+
+    # Build backbone
+    backbone = SwinBackbone()
+    backbone_keys = [k for k in sd if k.startswith("backbone.")]
+    mapped_backbone = {}
+    for k in backbone_keys:
+        mapped_backbone[k[len("backbone."):]] = sd[k]
+    backbone.load_state_dict(mapped_backbone, strict=False)
+
+    # Build head
+    num_features = backbone.num_features
+    fc = nn.Linear(num_features, 200)
+    if "head.fc.weight" in sd:
+        fc.weight.data.copy_(sd["head.fc.weight"])
+        fc.bias.data.copy_(sd["head.fc.bias"])
+
+    backbone.to(DEVICE).eval()
+    fc.to(DEVICE).eval()
+
+    x = input_tensor.clone().to(DEVICE)
+
+    with torch.no_grad():
+        # Forward through backbone
+        x, hw = backbone.patch_embed(x)
+        for stage in backbone.stages:
+            x, hw = stage(x, hw)
+        # x: [1, 49, C], hw: (7, 7)
+
+        H, W = hw
+        C = x.shape[-1]
+
+        # Get FC weight for target class
+        w = fc.weight[class_idx]  # [C]
+
+        # Compute per-position contribution: x · w
+        # x: [1, H*W, C] -> [1, H*W]
+        activation = (x.squeeze(0) * w.unsqueeze(0)).sum(dim=-1)  # [49]
+
+        # Add bias (constant offset, skip for visualization)
+
+        # Reshape to 7x7
+        activation = activation.view(H, W).cpu().numpy()
+
+        # Normalize
+        act_min, act_max = activation.min(), activation.max()
+        if act_max - act_min > 1e-8:
+            activation = (activation - act_min) / (act_max - act_min)
+
+    return _smooth(activation)
+
+
+def _find_teacher_ckpt():
+    import os
+    for name in ["swinb_fully.pth", "swinbase_fully.pth"]:
+        path = os.path.join(CHECKPOINT_DIR, name)
+        if os.path.exists(path):
+            return path
+    swin_dir = os.path.join(CHECKPOINT_DIR, "swinb_fully")
+    if os.path.isdir(swin_dir):
+        pths = [f for f in os.listdir(swin_dir) if f.endswith(".pth")]
+        if pths:
+            return os.path.join(swin_dir, pths[0])
+    return None
+
+
+# ── ResNet: Gradient saliency ────────────────────
+
+def _cnn_heatmap(model, input_tensor, class_idx):
+    """Input gradient saliency for CNN models (works on traced)."""
+    x = input_tensor.clone().to(DEVICE).requires_grad_(True)
+    output = model(x)
+    if output.dim() == 1:
+        output = output.unsqueeze(0)
+    score = output[0, class_idx]
+    score.backward()
+
+    grad = x.grad
+    if grad is None:
+        return np.ones((IMAGE_SIZE, IMAGE_SIZE), dtype=np.float32) * 0.5
+
+    saliency = grad.abs().max(dim=1)[0].squeeze(0).detach().cpu().numpy()
+    smin, smax = saliency.min(), saliency.max()
+    if smax - smin > 1e-8:
+        saliency = (saliency - smin) / (smax - smin)
+
+    return _smooth(saliency)
+
+
+def _smooth(img: np.ndarray, sigma: float = 1.0) -> np.ndarray:
+    from scipy.ndimage import gaussian_filter
+    return gaussian_filter(img, sigma=sigma)
+
+
+# ── Public API ──────────────────────────────────
+
+def generate_gradcam(input_tensor, class_idx):
     results = {}
     for role in MODEL_ROLES:
         model = MODELS.get(role)
@@ -25,75 +133,11 @@ def generate_gradcam(input_tensor: torch.Tensor, class_idx: int) -> dict:
             results[role] = np.zeros((IMAGE_SIZE, IMAGE_SIZE), dtype=np.float32)
             continue
         try:
-            results[role] = _compute_heatmap(model, input_tensor, class_idx)
+            if role == "teacher":
+                results[role] = _swin_heatmap(input_tensor, class_idx)
+            else:
+                results[role] = _cnn_heatmap(model, input_tensor, class_idx)
         except Exception as e:
-            print(f"  [gradcam:{role}] {e}, using fallback")
-            try:
-                results[role] = _occlusion_map(model, input_tensor, class_idx)
-            except Exception as e2:
-                print(f"  [gradcam:{role}] Fallback also failed: {e2}")
-                results[role] = np.ones((IMAGE_SIZE, IMAGE_SIZE), dtype=np.float32) * 0.5
+            print(f"  [gradcam:{role}] Error: {e}")
+            results[role] = np.ones((IMAGE_SIZE, IMAGE_SIZE), dtype=np.float32) * 0.5
     return results
-
-
-def _compute_heatmap(model, x_input, class_idx):
-    """Try gradient saliency first."""
-    x = x_input.clone().to(DEVICE).requires_grad_(True)
-    output = model(x)
-    if output.dim() == 1:
-        output = output.unsqueeze(0)
-    score = output[0, class_idx]
-    score.backward()
-
-    if x.grad is None:
-        raise RuntimeError("Gradient is None")
-
-    grad = x.grad.abs().max(dim=1)[0].squeeze(0).detach().cpu().numpy()
-    gm = grad.max()
-    if gm < 1e-10:
-        raise RuntimeError("All-zero gradient")
-
-    grad = (grad - grad.min()) / (grad.max() - grad.min() + 1e-8)
-    return _smooth(grad)
-
-
-def _occlusion_map(model, x_input, class_idx, window=16, stride=8):
-    """Occlusion sensitivity: measure score drop when masking patches (no gradients needed)."""
-    H, W = IMAGE_SIZE, IMAGE_SIZE
-    x = x_input.clone().to(DEVICE)
-    output = model(x)
-    if output.dim() == 1:
-        output = output.unsqueeze(0)
-    base_score = output[0, class_idx].item()
-
-    heatmap = np.zeros((H, W), dtype=np.float32)
-    count = np.zeros((H, W), dtype=np.float32)
-
-    # Use gray occlusion
-    occluder = torch.tensor([0.485, 0.456, 0.406], device=DEVICE).view(1, 3, 1, 1)
-
-    for y in range(0, H - window + 1, stride):
-        for x0 in range(0, W - window + 1, stride):
-            x_occ = x.clone()
-            x_occ[:, :, y:y + window, x0:x0 + window] = occluder
-            with torch.no_grad():
-                out = model(x_occ)
-                if out.dim() == 1:
-                    out = out.unsqueeze(0)
-                drop = base_score - out[0, class_idx].item()
-            heatmap[y:y + window, x0:x0 + window] += max(0, drop)
-            count[y:y + window, x0:x0 + window] += 1
-
-    count[count < 1] = 1
-    heatmap /= count
-
-    hm = heatmap.max()
-    if hm > 1e-8:
-        heatmap = (heatmap - heatmap.min()) / (hm - heatmap.min() + 1e-8)
-    return _smooth(heatmap)
-
-
-def _smooth(img: np.ndarray, sigma: float = 1.0) -> np.ndarray:
-    """Gaussian blur for smoother visualization."""
-    from scipy.ndimage import gaussian_filter
-    return gaussian_filter(img, sigma=sigma)
