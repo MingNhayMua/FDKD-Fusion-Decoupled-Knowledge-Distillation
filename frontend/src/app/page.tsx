@@ -22,10 +22,10 @@ export default function Home() {
       {inferenceResult && (
         <>
           <ModelComparison />
+          <GradCAMSection />
           <DistributionSection />
           <DKDAnalysis />
           <MetricsCards />
-          <GradCAMSection />
         </>
       )}
     </main>

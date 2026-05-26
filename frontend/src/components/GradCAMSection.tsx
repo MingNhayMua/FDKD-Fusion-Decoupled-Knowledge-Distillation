@@ -20,14 +20,23 @@ export default function GradCAMSection() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  console.log("[GradCAM] rendering, hasResult:", !!inferenceResult, "hasApiUrl:", !!apiUrl, "hasImage:", !!imageFile);
+
   const handleRun = useCallback(async () => {
-    if (!apiUrl || !imageFile) return;
+    console.log("[GradCAM] button clicked, apiUrl:", apiUrl, "imageFile:", !!imageFile);
+    if (!apiUrl || !imageFile) {
+      console.log("[GradCAM] missing apiUrl or imageFile, aborting");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
+      console.log("[GradCAM] calling API...");
       const result = await runGradCAM(apiUrl, imageFile);
+      console.log("[GradCAM] API success, heatmaps:", Object.keys(result.heatmaps));
       setGradcamData(result);
     } catch (err: unknown) {
+      console.error("[GradCAM] API error:", err);
       setError(err instanceof Error ? err.message : "GradCAM failed");
     } finally {
       setLoading(false);
