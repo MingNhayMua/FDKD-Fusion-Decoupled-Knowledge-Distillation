@@ -21,7 +21,7 @@ from backend.models.loader import MODELS
 from backend.inference.pipeline import run_inference
 from backend.inference.dkd import compute_dkd
 from backend.inference.metrics import compute_metrics
-from backend.visualization.gradcam import generate_gradcam, _gradcam_runners
+from backend.visualization.gradcam import generate_gradcam
 
 
 app = FastAPI(
