@@ -253,32 +253,24 @@ def _map_swin_keys(state_dict: dict) -> dict:
 
 
 def _create_model(arch: str):
-    """Create a model using torchvision (ResNet) or timm (Swin-B).
+    """Create a model for inference.
 
-    This avoids needing mmcv/mmpretrain for model creation — only
-    standard PyTorch libraries are required. The checkpoint key mapping
-    is handled by _map_mmpretrain_keys() during loading.
+    - Swin-B: Custom pure-PyTorch implementation matching MMPretrain
+      architecture exactly (no mmcv/timm needed, no key mapping needed).
+    - ResNet: torchvision models with mapped keys.
 
     Args:
         arch: One of 'swin_base', 'resnet152', 'resnet18'
     """
+    if arch == "swin_base":
+        from backend.models.swin_pure import SwinClassifier
+        model = SwinClassifier(num_classes=NUM_CLASSES)
+        print(f"  Created pure-PyTorch model: {arch} (MMPretrain-compatible)")
+        return model
+
     from torchvision import models
 
-    if arch == "swin_base":
-        try:
-            import timm
-            model = timm.create_model(
-                "swin_base_patch4_window7_224",
-                num_classes=NUM_CLASSES,
-                pretrained=False,
-            )
-            print(f"  Created timm model: {arch}")
-            return model
-        except ImportError:
-            print(f"  ⚠️ timm not installed, cannot create {arch}")
-            return None
-
-    elif arch == "resnet152":
+    if arch == "resnet152":
         model = models.resnet152(weights=None)
         model.fc = torch.nn.Linear(model.fc.in_features, NUM_CLASSES)
         print(f"  Created torchvision model: {arch}")
