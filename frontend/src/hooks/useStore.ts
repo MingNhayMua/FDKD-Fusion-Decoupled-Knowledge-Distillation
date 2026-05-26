@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { InferenceResponse, GradCAMData } from '@/types/inference';
+import type { InferenceResponse } from '@/types/inference';
 
 interface AppState {
   // Connection
@@ -16,11 +16,9 @@ interface AppState {
 
   // Inference
   inferenceResult: InferenceResponse | null;
-  gradcamResult: GradCAMData | null;
   isLoading: boolean;
   temperature: number;
   setInferenceResult: (result: InferenceResponse | null) => void;
-  setGradcamResult: (result: GradCAMData | null) => void;
   setLoading: (loading: boolean) => void;
   setTemperature: (temp: number) => void;
 
@@ -41,11 +39,9 @@ export const useStore = create<AppState>((set) => ({
   setImagePreview: (preview) => set({ imagePreview: preview }),
 
   inferenceResult: null,
-  gradcamResult: null,
   isLoading: false,
   temperature: 1.0,
   setInferenceResult: (result) => set({ inferenceResult: result }),
-  setGradcamResult: (result) => set({ gradcamResult: result }),
   setLoading: (loading) => set({ isLoading: loading }),
   setTemperature: (temp) => set({ temperature: temp }),
 

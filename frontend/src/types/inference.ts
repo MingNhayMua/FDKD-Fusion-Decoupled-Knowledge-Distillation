@@ -70,12 +70,6 @@ export interface MetricsData {
   entropy_student: number;
 }
 
-export interface GradCAMData {
-  teacher: string | null;
-  assistant: string | null;
-  student: string | null;
-}
-
 export interface InferenceResponse {
   image_id: string;
   image_base64: string;
@@ -85,5 +79,4 @@ export interface InferenceResponse {
   student: ModelPrediction;
   dkd: DKDData;
   metrics: MetricsData;
-  gradcam?: GradCAMData;
 }

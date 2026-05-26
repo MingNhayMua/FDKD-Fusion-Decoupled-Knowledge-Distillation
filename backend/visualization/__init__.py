@@ -1,1 +1,1 @@
-# visualization
+"""Visualization utilities (placeholder)."""

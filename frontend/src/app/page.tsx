@@ -7,7 +7,6 @@ import ImageUpload from "@/components/ImageUpload";
 import ModelComparison from "@/components/ModelComparison";
 import DistributionSection from "@/components/DistributionSection";
 import DKDAnalysis from "@/components/DKDAnalysis";
-import GradCAMViewer from "@/components/GradCAMViewer";
 import MetricsCards from "@/components/MetricsCards";
 
 export default function Home() {
@@ -24,7 +23,6 @@ export default function Home() {
           <ModelComparison />
           <DistributionSection />
           <DKDAnalysis />
-          <GradCAMViewer />
           <MetricsCards />
         </>
       )}

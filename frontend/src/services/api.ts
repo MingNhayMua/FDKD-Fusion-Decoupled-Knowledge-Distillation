@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { InferenceResponse, GradCAMData } from '@/types/inference';
+import type { InferenceResponse } from '@/types/inference';
 
 // Ngrok free tier shows an interstitial HTML page unless this header is sent
 const ngrokHeaders = { 'ngrok-skip-browser-warning': '1' };
@@ -46,18 +46,4 @@ export async function recomputeDistribution(
     timeout: 30000,
   });
   return res.data;
-}
-
-export async function getGradCAM(
-  apiUrl: string,
-  file: File
-): Promise<GradCAMData> {
-  const formData = new FormData();
-  formData.append('file', file);
-
-  const res = await axios.post(`${apiUrl}/api/gradcam`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data', ...ngrokHeaders },
-    timeout: 60000,
-  });
-  return res.data.gradcam;
 }

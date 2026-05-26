@@ -10,7 +10,7 @@ import { runInference } from "@/services/api";
 export default function ImageUpload() {
   const {
     apiUrl, isConnected, imagePreview, setImageFile, setImagePreview,
-    setInferenceResult, setGradcamResult, isLoading, setLoading, temperature,
+    setInferenceResult, isLoading, setLoading, temperature,
   } = useStore();
 
   const onDrop = useCallback(async (files: File[]) => {
@@ -25,7 +25,7 @@ export default function ImageUpload() {
     if (!isConnected || !apiUrl) return;
 
     setLoading(true);
-    setGradcamResult(null);
+
     try {
       const result = await runInference(apiUrl, file, temperature);
       setInferenceResult(result);
@@ -34,7 +34,7 @@ export default function ImageUpload() {
     } finally {
       setLoading(false);
     }
-  }, [apiUrl, isConnected, temperature, setImageFile, setImagePreview, setInferenceResult, setGradcamResult, setLoading]);
+  }, [apiUrl, isConnected, temperature, setImageFile, setImagePreview, setInferenceResult, setLoading]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,

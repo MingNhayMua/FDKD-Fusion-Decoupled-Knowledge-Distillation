@@ -5,7 +5,6 @@ Routes:
   GET  /api/health         Server status + model info
   POST /api/inference       Full T→A→S pipeline
   POST /api/distribution    Recompute at new temperature
-  POST /api/gradcam         Generate Grad-CAM heatmaps
 """
 import uuid
 import base64
@@ -19,13 +18,12 @@ from backend.models.loader import MODELS
 from backend.inference.pipeline import run_inference
 from backend.inference.dkd import compute_dkd
 from backend.inference.metrics import compute_metrics
-from backend.visualization.gradcam import generate_gradcam_all
 
 
 app = FastAPI(
     title="FDKD Interactive Demo API",
     description="Fusion Decoupled Knowledge Distillation visualization backend",
-    version="1.0.0",
+    version="2.0.0",
 )
 
 app.add_middleware(
@@ -98,12 +96,3 @@ async def recompute_distribution(
         "dkd": dkd,
         "metrics": metrics,
     })
-
-
-@app.post("/api/gradcam")
-async def gradcam(file: UploadFile = File(...)):
-    """Generate Grad-CAM heatmaps for all three models."""
-    image_bytes = await file.read()
-    input_tensor, img_np = preprocess_image(image_bytes)
-    results = generate_gradcam_all(input_tensor, img_np)
-    return JSONResponse({"gradcam": results})
