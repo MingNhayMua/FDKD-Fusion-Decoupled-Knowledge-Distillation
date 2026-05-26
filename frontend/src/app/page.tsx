@@ -8,6 +8,7 @@ import ModelComparison from "@/components/ModelComparison";
 import DistributionSection from "@/components/DistributionSection";
 import DKDAnalysis from "@/components/DKDAnalysis";
 import MetricsCards from "@/components/MetricsCards";
+import GradCAMSection from "@/components/GradCAMSection";
 
 export default function Home() {
   const { inferenceResult } = useStore();
@@ -24,6 +25,7 @@ export default function Home() {
           <DistributionSection />
           <DKDAnalysis />
           <MetricsCards />
+          <GradCAMSection />
         </>
       )}
     </main>

@@ -56,3 +56,8 @@ export interface InferenceResponse {
   dkd: DKDData;
   metrics: MetricsData;
 }
+
+export interface GradCAMResponse {
+  target_class: number;
+  heatmaps: Record<string, string>; // role → base64 PNG
+}
