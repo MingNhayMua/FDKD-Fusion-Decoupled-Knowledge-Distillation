@@ -106,12 +106,16 @@ def export_teacher(checkpoint_dir, output_dir):
     result = model.load_state_dict(sd, strict=False)
     print(f"  Missing: {len(result.missing_keys)}, "
           f"Unexpected: {len(result.unexpected_keys)}")
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
     model.eval()
 
     wrapper = TracedClassifier(model.backbone, model.head.fc)
+    wrapper = wrapper.to(device)
     wrapper.eval()
 
-    dummy = torch.randn(1, 3, 224, 224)
+    dummy = torch.randn(1, 3, 224, 224, device=device)
     with torch.no_grad():
         # Verify before tracing
         out = wrapper(dummy)
