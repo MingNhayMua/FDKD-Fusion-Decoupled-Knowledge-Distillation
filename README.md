@@ -106,10 +106,26 @@ npm run dev
 
 ### 3. Deploy Frontend to Vercel
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/MingNhayMua/FDKD-Fusion-Decoupled-Knowledge-Distillation.git&root-directory=frontend)
+
+Click the button above, or follow the steps below:
+
+**Option A — Vercel Dashboard (recommended)**
+1. Push this repo to your GitHub account
+2. Go to [vercel.com/new](https://vercel.com/new), import the repo
+3. Set **Root Directory** to `frontend`
+4. Framework will be auto-detected (Next.js) — no other config needed
+5. Click **Deploy**
+
+**Option B — Vercel CLI**
 ```bash
 cd frontend
-npx vercel
+npm install -g vercel
+vercel
+# Follow the prompts — Vercel auto-detects Next.js
 ```
+
+> **Note:** The frontend requires a running backend URL to function. After deploying, users must paste the ngrok URL from the Colab backend into the connection input on the page.
 
 ---
 
