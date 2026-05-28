@@ -43,7 +43,6 @@ def start_server(
     if ngrok_token:
         ngrok.set_auth_token(ngrok_token)
 
-    ngrok.kill()  # kill stale tunnels from previous session
     public_url = ngrok.connect(port)
     print("\n" + "=" * 60)
     print(f"🚀 FDKD Demo Server is running!")
