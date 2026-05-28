@@ -57,9 +57,10 @@ export default function DistributionSection() {
       name: t.class.length > 12 ? t.class.slice(0, 11) + "\u2026" : t.class,
     };
     for (const key of modelKeys) {
-      const fullProbs = inferenceResult.models[key]?.full_probs;
-      const prob = fullProbs?.[t.class_id] ?? 0;
-      row[LABELS[key] || key] = +(prob * 100).toFixed(2);
+      const match = inferenceResult.models[key]?.topk?.find(
+        (m) => m.class_id === t.class_id
+      );
+      row[LABELS[key] || key] = match ? +(match.prob * 100).toFixed(2) : 0;
     }
     return row;
   });
