@@ -73,11 +73,11 @@ export default function GradCAMSection() {
       )}
 
       {gradcamData && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="flex flex-row gap-4 overflow-x-auto pb-2">
           {Object.entries(gradcamData.heatmaps).map(([role, img], i) => (
             <motion.div
               key={role}
-              className="glass-card p-4"
+              className="glass-card p-4 flex-1 min-w-0"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
@@ -87,10 +87,10 @@ export default function GradCAMSection() {
                 style={{ color: COLORS[role] || "#94a3b8" }}
               >
                 <div
-                  className="w-3 h-3 rounded-full"
+                  className="w-3 h-3 rounded-full shrink-0"
                   style={{ background: COLORS[role] || "#94a3b8" }}
                 />
-                <span className="font-semibold text-sm">
+                <span className="font-semibold text-sm truncate">
                   {LABELS[role] || role}
                 </span>
               </div>
